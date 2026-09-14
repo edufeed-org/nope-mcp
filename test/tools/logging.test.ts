@@ -32,6 +32,20 @@ describe('instrumentToolLogging', () => {
     expect(lines.map((l) => l.ok)).toEqual([false, false]);
     expect(lines[1].error).toBe('boom');
   });
+  it('marks a JSON text payload carrying an error code as ok:false with that code', async () => {
+    const lines: ToolLogLine[] = [];
+    const s = fakeServer();
+    instrumentToolLogging(s as any, (l) => lines.push(l));
+    const payload = JSON.stringify({ error: 'relay_unreachable', message: 'content relay did not answer' });
+    s.registerTool('typed', {}, async () => ({ content: [{ type: 'text', text: payload }] }));
+    s.registerTool('plainJson', {}, async () => ({ content: [{ type: 'text', text: JSON.stringify({ passages: [] }) }] }));
+    s.registerTool('plainText', {}, async () => ({ content: [{ type: 'text', text: 'not json {' }] }));
+    await s.registered.typed({}, {});
+    await s.registered.plainJson({}, {});
+    await s.registered.plainText({}, {});
+    expect(lines.map((l) => l.ok)).toEqual([false, true, true]);
+    expect(lines[0].error).toBe('relay_unreachable');
+  });
 });
 
 describe('summarizeArgs', () => {

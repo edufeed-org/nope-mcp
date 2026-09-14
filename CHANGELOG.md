@@ -24,6 +24,7 @@ All notable changes to amb-mcp are documented here. The format follows
   `connector-url`), so a model can tell a deliberately narrowed session from
   the deployment's standard corpus.
 - **Per-tool-call logging:** every tool call emits one JSON line on stderr
+  Typed error payloads (`{"error":"relay_unreachable",…}` returned as text) are logged as `ok:false` with the code.
   (`ts`, `tool`, `ms`, `ok`, `session`, summarized `args`, `error` on
   failure). `LOG_LEVEL` controls it: `info` (default) logs every call,
   `warn`/`error` only failures, `silent` nothing. stdout stays reserved for

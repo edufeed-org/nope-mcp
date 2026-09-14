@@ -53,6 +53,31 @@ export function defaultSink(line: ToolLogLine): void {
   console.error(JSON.stringify(line));
 }
 
+type ToolResultShape = { isError?: boolean; content?: Array<{ type?: string; text?: string }> };
+
+/**
+ * Tools such as search_passages report typed failures (relay_unreachable,
+ * empty_scope, unknown_relay …) as a normal text result whose body is a JSON
+ * object with an `error` code, not as an MCP isError result. Surface that
+ * code so failure counts can be read from the log. Only the first content
+ * block is inspected and only when it looks like a JSON object.
+ */
+export function payloadErrorCode(result: ToolResultShape | undefined): string | undefined {
+  const first = result?.content?.[0];
+  if (!first || first.type !== 'text' || typeof first.text !== 'string') return undefined;
+  const text = first.text.trimStart();
+  if (!text.startsWith('{')) return undefined;
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (parsed && typeof parsed === 'object' && typeof (parsed as { error?: unknown }).error === 'string') {
+      return (parsed as { error: string }).error;
+    }
+  } catch {
+    // not JSON — an ordinary text result
+  }
+  return undefined;
+}
+
 type RegisterTool = McpServer['registerTool'];
 type AnyCallback = (...cbArgs: unknown[]) => unknown;
 
@@ -87,8 +112,9 @@ export function instrumentToolLogging(
         });
       };
       try {
-        const result = (await cb(...cbArgs)) as { isError?: boolean } | undefined;
-        finish(!result?.isError);
+        const result = (await cb(...cbArgs)) as ToolResultShape | undefined;
+        const code = result?.isError ? undefined : payloadErrorCode(result);
+        finish(!result?.isError && code === undefined, code);
         return result;
       } catch (err) {
         finish(false, err instanceof Error ? err.message : String(err));
