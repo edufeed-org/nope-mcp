@@ -12,6 +12,7 @@ import { resolveSpell } from '../spells/resolve.js';
 import { buildScope } from '../spells/scope.js';
 import { resolveRelaysOrError, relaysNotSearched } from './relaySelection.js';
 import { getSessionPubkey } from './signer.js';
+import { OVERFETCH_FACTOR, PASSAGE_ALPHA, selectPassages } from './passageSelection.js';
 
 export interface FetchSpellResult {
   event: NostrEvent | null;
@@ -27,7 +28,7 @@ export interface SearchPassagesDeps {
   /** Latest kind-3 p-tags for a pubkey ($contacts). */
   fetchContacts: (pubkeyHex: string) => Promise<string[]>;
   /** Scoped chunk search on the effective relay's indexer. */
-  searchChunks: (relay: string, body: { q: string; k: number; filter: Record<string, unknown> }) => Promise<{ hits: PassageHit[]; total: number }>;
+  searchChunks: (relay: string, body: { q: string; k: number; filter: Record<string, unknown>; alpha?: number }) => Promise<{ hits: PassageHit[]; total: number }>;
   /** The effective relay URL for this call. */
   relay: string;
 }
@@ -202,11 +203,14 @@ export async function runSearchPassages(
     }
     throw err;
   }
-  const k = Math.min(params.limit ?? 10, 25);
-  const res = await deps.searchChunks(deps.relay, { q: params.question, k, filter: scope.chunkFilter });
+  // Over-fetch with vector-leaning ranking, then cap per document and apply
+  // the relative score floor so `limit` passages come from several sources.
+  const limit = Math.min(params.limit ?? 10, 25);
+  const k = Math.min(limit * OVERFETCH_FACTOR, 100);
+  const res = await deps.searchChunks(deps.relay, { q: params.question, k, filter: scope.chunkFilter, alpha: PASSAGE_ALPHA });
 
   return {
-    passages: res.hits,
+    passages: selectPassages(res.hits, limit),
     scope: {
       spell: spellToEventTemplate(spell),
       ...(spellEventId ? { spell_event_id: spellEventId } : {}),

@@ -26,12 +26,21 @@ describe('runSearchPassages', () => {
     const d = deps();
     const out = await runSearchPassages(d, { question: 'klimawandel', kinds: [30142] }, undefined);
     expect(d.searchChunks).toHaveBeenCalledWith(RELAY, {
-      q: 'klimawandel', k: 10, filter: { kinds: [30142] },
+      q: 'klimawandel', k: 30, filter: { kinds: [30142] }, alpha: 0.7,
     });
     expect(out.passages).toHaveLength(1);
     expect(out.scope.mode).toBe('passthrough');
     expect(out.scope.spell.tags).toContainEqual(['cmd', 'REQ']);
     expect(out.scope.spell.tags).toContainEqual(['k', '30142']);
+  });
+
+  it('over-fetches, then caps per document and truncates to limit', async () => {
+    const coordA = `30142:${'a'.repeat(64)}:d1`, coordB = `30142:${'b'.repeat(64)}:d2`;
+    const mk = (c: string, s: number, i: number) => ({ ...HIT, event_coord: c, chunk_idx: i, chunk_id: `${c}:${i}`, score: s });
+    const d = deps({ searchChunks: vi.fn(async () => ({ hits: [mk(coordA, 0.7, 1), mk(coordA, 0.35, 2), mk(coordA, 0.3, 3), mk(coordB, 0.25, 0)], total: 4 })) });
+    const out = await runSearchPassages(d, { question: 'q', kinds: [30142], limit: 3 }, undefined);
+    expect(d.searchChunks).toHaveBeenCalledWith(RELAY, expect.objectContaining({ k: 9, alpha: 0.7 }));
+    expect(out.passages.map((p) => p.event_coord)).toEqual([coordA, coordA, coordB]);
   });
 
   it('published spell → fetch, parse, materialize, ground', async () => {

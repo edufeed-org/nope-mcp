@@ -95,7 +95,7 @@ export class IndexerClient {
 
   async searchChunks(
     relayUrl: string,
-    body: { q: string; k: number; filter: Record<string, unknown> }
+    body: { q: string; k: number; filter: Record<string, unknown>; alpha?: number }
   ): Promise<{ hits: PassageHit[]; total: number }> {
     const base = this.forRelay(relayUrl);
     if (!base) {
