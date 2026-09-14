@@ -238,7 +238,13 @@ export function registerSearchPassagesTool(
         'and returns them with citations (source resource, page, heading, source URL) — ' +
         'answer the user FROM the passages and cite each source. (For discovery intent — ' +
         '"finde/empfiehl Materialien" — use search_content instead, or afterwards to offer ' +
-        'browsable links.) Keep `question` topic-only. Scope is required but simple: with ' +
+        'browsable links.) Keep `question` topic-only. Ranking is hybrid keyword+vector, so ' +
+        'phrase the question as a topical statement that names the subject and the target ' +
+        'group ("Friedenserziehung in der Grundschule: Einstieg in das Thema Frieden mit ' +
+        'Kindern"), not as the user\'s literal sentence ("Wie kann ich …?"). Results are ' +
+        'capped at two passages per document; a passage with only a snippet and no text is ' +
+        'either license-gated or has no fulltext yet — say so instead of guessing. ' +
+        'Scope is required but simple: with ' +
         'no source restriction from the user, pass the content kinds (e.g. kinds:[30142] ' +
         'for educational resources, [30040,30041] for publications, [30023] for articles). ' +
         'Route source restrictions ("nur Content von X") into the scope parameters: a ' +

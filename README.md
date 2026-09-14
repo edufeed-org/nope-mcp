@@ -68,6 +68,7 @@ cp .env.example .env
 | `INDEXER_API_TOKEN` | `search_passages` | _(unset)_ | Bearer token for the indexer's `/search_chunks` (shared default for all endpoints). |
 | `INDEXER_API_TOKENS` | `search_passages` | _(unset)_ | Per-relay token overrides, comma-separated `wss://relay=token` pairs — each deployed indexer instance has its own token. Every `INDEXER_ENDPOINTS` entry must be covered by this or `INDEXER_API_TOKEN`; a partially tokened config fails at startup. |
 | `SPELL_RELAYS` | `search_passages` | `wss://relay.edufeed.org` | Relays to fetch kind-777 spells (and kind-3 contact lists) from. |
+| `LOG_LEVEL` | all transports | `info` | Per-tool-call logging on **stderr** (stdout belongs to the stdio transport). Every call emits one JSON line: `{"ts":"2026-09-14T12:00:00.000Z","tool":"search_passages","ms":412,"ok":true,"session":"<id>","args":{"question":"…","kinds":[30142]}}` — `ok` is `false` for `isError` results and thrown errors (then with an `error` message); strings in `args` are cut at 120 chars, arrays longer than five collapse to `{length, head}`. `info` (default) logs every call, `warn`/`error` log failures only, `silent` disables the lines. |
 | `EDUFEED_APP_BASE_URL` | all transports | _(unset)_ | Frontend base URL (no trailing slash, e.g. `https://app.edufeed.org`). When set, results from `search_content`, `search_resources`, `get_resource`, and `search_calendar_events` include a `url` field pointing at the edufeed-app viewer page (`<base>/<naddr>`) so LLM clients can render direct links. Unset means no `url` field. |
 | `SERVER_PRIVATE_KEY` | `src/index.ts` (+ discovery scripts) | **required** for Nostr transport | Nostr private key (`nsec` or hex) that is the server's own ContextVM identity. The derived pubkey is what clients connect to via `cvmi use <pubkey>`. Not read by the stdio or HTTP transports. |
 | `RELAYS` | `src/index.ts` (+ discovery scripts) | `wss://relay.contextvm.org`, `wss://cvm.otherstuff.ai` | Comma-separated relay URLs for ContextVM transport announcements and request/response traffic. Not read by the stdio or HTTP transports. |
@@ -287,6 +288,19 @@ exact spelling) into `search` as a quoted field filter
 passed by `nevent`/event id; every response echoes the canonical spell for
 the scope so it can be published and reused. Spells may use `$me`/`$contacts`,
 resolved to the caller (pass `me` when the transport is anonymous).
+
+**Ranking.** The indexer runs a Typesense hybrid search; `search_passages`
+requests vector weight `alpha: 0.7` (the indexer's own default is the
+keyword-leaning 0.3, kept for the relay's rerank path), so the semantic rank
+leads and boilerplate keyword matches ("GRUNDSCHULE", "Kinder") stop winning.
+It over-fetches `min(limit × 3, 100)` chunks, then keeps at most **two
+passages per document** (`event_coord`), drops hits below **10 % of the top
+score**, and returns the first `limit`. Phrase `question` as a topical
+statement naming subject and target group
+("Friedenserziehung in der Grundschule: Einstieg in das Thema Frieden mit
+Kindern") rather than the user's literal sentence ("Wie kann ich …?"). A
+passage with only a snippet and no text is either license-gated or has no
+fulltext indexed yet.
 
 Parameters:
 | Name | Type | Description |

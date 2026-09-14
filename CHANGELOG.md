@@ -23,6 +23,26 @@ All notable changes to amb-mcp are documented here. The format follows
 - **`list_relays` reports `defaultRelaysSource`** (`server-config` or
   `connector-url`), so a model can tell a deliberately narrowed session from
   the deployment's standard corpus.
+- **Per-tool-call logging:** every tool call emits one JSON line on stderr
+  (`ts`, `tool`, `ms`, `ok`, `session`, summarized `args`, `error` on
+  failure). `LOG_LEVEL` controls it: `info` (default) logs every call,
+  `warn`/`error` only failures, `silent` nothing. stdout stays reserved for
+  the stdio transport.
+
+### Changed
+
+- **`search_passages` ranking:** requests vector weight `alpha: 0.7` from the
+  indexer instead of its keyword-leaning default 0.3, over-fetches
+  `min(limit × 3, 100)` chunks, keeps at most two passages per document and
+  drops hits below 10 % of the top score before truncating to `limit`. A
+  Christmas escape game no longer tops a peace-education question on the
+  strength of the words "GRUNDSCHULE" and "Kinder", and one document no
+  longer fills three of ten slots.
+- **`search_passages` guidance:** the tool description and the server
+  instructions now tell the model to phrase `question` as a topical statement
+  naming subject and target group rather than the user's literal sentence,
+  and to say so when a passage carries only a snippet (license-gated or no
+  fulltext yet) instead of guessing.
 
 ## [0.3.0] - 2026-08-19
 
