@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { AMBRelayClient } from './relay/client.js';
 import { registerTools } from './tools/index.js';
+import { instrumentToolLogging } from './tools/logging.js';
 import { registerResources } from './resources/index.js';
 import { SERVER_NAME, SERVER_VERSION, SERVER_INSTRUCTIONS } from './server-info.js';
 import type { IndexerClient } from './indexer/client.js';
@@ -35,6 +36,8 @@ export function buildSessionServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
     { instructions: SERVER_INSTRUCTIONS },
   );
+  // Before registerTools: the patch only sees tools registered after it.
+  instrumentToolLogging(server);
   const ambClient = new AMBRelayClient(ambRelays, {
     extraRelays: options?.ambExtraRelays,
   });
