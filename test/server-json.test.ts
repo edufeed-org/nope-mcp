@@ -1,12 +1,19 @@
 import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 
+import { SERVER_VERSION } from '../src/server-info.js';
+
 const serverJson = JSON.parse(readFileSync(new URL('../server.json', import.meta.url), 'utf8'));
 const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 describe('server.json (MCP Registry manifest)', () => {
   it('version matches package.json version', () => {
     expect(serverJson.version).toBe(packageJson.version);
+  });
+
+  it('matches SERVER_VERSION (src/server-info.ts), so the MCP handshake and the registry agree', () => {
+    expect(serverJson.version).toBe(SERVER_VERSION);
+    expect(packageJson.version).toBe(SERVER_VERSION);
   });
 
   it('is named under the org.edufeed namespace', () => {

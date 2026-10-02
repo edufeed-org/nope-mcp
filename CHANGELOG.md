@@ -6,8 +6,14 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-02
+
 ### Added
 
+- **MCP Registry manifest** (`server.json`): publishes nope-mcp to the
+  official [MCP Registry](https://registry.modelcontextprotocol.io) as
+  `org.edufeed/nope-mcp`, pointing at the `https://mcp.edufeed.org/mcp`
+  remote. Its `version` always matches `package.json`.
 - **Per-connection default relays via the connector URL:** the HTTP transport
   reads a `?relays=` parameter off the `initialize` request, e.g.
   `https://mcp.amb.edufeed.org/mcp?relays=sodix`. The named relays become that
