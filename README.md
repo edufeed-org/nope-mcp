@@ -149,9 +149,14 @@ node dist/http.js     # production (after `npm run build`)
 
 The server exposes:
 
-- `POST /mcp` — JSON-RPC requests (initialize, tool calls, etc.)
-- `GET /mcp` — server-push SSE stream for the current session
-- `DELETE /mcp` — terminate the current session
+- `POST /` and `POST /mcp` — JSON-RPC requests (initialize, tool calls, etc.), same session map
+- `GET /` and `GET /mcp` — server-push SSE stream for the current session
+- `GET /` (plain browser request — no `Mcp-Session-Id`, no `Accept: text/event-stream`) — a small
+  JSON info document (`name`, `version`, `mcp`, `docs`, `transport`) instead of the MCP 404;
+  `GET /mcp` always behaves as an MCP session request
+- `DELETE /` and `DELETE /mcp` — terminate the current session
+- `GET /.well-known/oauth-protected-resource` / `GET /.well-known/oauth-protected-resource/mcp` —
+  RFC 9728 protected-resource metadata for `/` and `/mcp` respectively, host-aware
 - `GET /healthz` — unauthenticated liveness probe
 
 Example handshake with `curl`:

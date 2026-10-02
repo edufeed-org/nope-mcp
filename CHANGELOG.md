@@ -35,6 +35,45 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
   `warn`/`error` only failures, `silent` nothing. stdout stays reserved for
   the stdio transport.
   Typed error payloads (`{"error":"relay_unreachable",…}` returned as text) are logged as `ok:false` with the code.
+- **MCP served at `/` as well as `/mcp`** (same session map, both paths accept
+  POST/GET/DELETE): a plain browser `GET /` — no `Mcp-Session-Id` header, no
+  `Accept: text/event-stream` — returns a small JSON info document (`name`,
+  `version`, `mcp`, `docs`, `transport`) instead of the usual "unknown
+  session" 404; `GET /mcp` is unchanged and always behaves as an MCP session
+  request.
+- **Host- and path-aware OAuth protected-resource metadata (RFC 9728):** the
+  PRM is built per request from the forwarded scheme + host (`trust proxy`
+  is now on, since Traefik terminates TLS) and served at both
+  `/.well-known/oauth-protected-resource` (`resource: https://<host>/`)
+  **and the new** `/.well-known/oauth-protected-resource/mcp` (`resource:
+  https://<host>/mcp`); a 401's `WWW-Authenticate` points at whichever PRM
+  matches the request path (`/mcp` and `/mcp/` alike). A host outside
+  `HTTP_ALLOWED_HOSTS` (when configured) falls back to `OAUTH_RESOURCE_URL`.
+  **Behaviour change for existing connector owners:** the root PRM's
+  `resource` value changed from `https://<host>/mcp` to `https://<host>/`;
+  a connector that cached the old root PRM document needs to re-fetch it.
+  Connectors addressing `/mcp` directly are unaffected — that path now has
+  its own PRM at `/.well-known/oauth-protected-resource/mcp`.
+- **`OAUTH_AUDIENCE` is now a comma-separated list** (default
+  `nope-mcp,amb-mcp`); a token whose `aud` contains *any* of them validates,
+  so tokens Keycloak still issues with `aud: amb-mcp` keep working under the
+  new name.
+- **MCP tool annotations** (`readOnlyHint`, `destructiveHint`, etc.) on every
+  registered tool, so clients that surface them (e.g. consent prompts)
+  classify each call correctly; `signer_status` is annotated as the pure
+  read it is, not as a mutator.
+- **English opening paragraph in the server `instructions`:**
+  `buildServerInstructions({ openLicensesOnly })` now leads with a
+  config-aware paragraph describing nope-mcp for any MCP client — not only
+  edufeed's German teacher base, since this server is listed in public MCP
+  directories — before the existing German routing guidance; it never claims
+  the open-license policy is active when `OPEN_LICENSES_ONLY=false`.
+
+### Deploy notes
+
+- Production's `HTTP_ALLOWED_HOSTS` must include `mcp.edufeed.org` — the
+  SDK's DNS-rebinding protection rejects any request whose Host is outside
+  this list once the list is set.
 
 ### Changed
 
@@ -42,8 +81,8 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
   `search_passages` return learning resources (kind 30142) only under CC0,
   the Public Domain Mark, CC BY or CC BY-SA — the allowlist amb-indexer uses
   for fulltext. NC/ND, all-rights-reserved and unlicensed resources are left
-  out; articles, wikis, publications, projects and measures carry no license
-  and stay unfiltered. Searches with free text over-fetch and filter
+  out; articles, wikis, publications, projects, measures and calendar events
+  carry no license and stay unfiltered. Searches with free text over-fetch and filter
   client-side, because any relay field filter would disable amb-relay's
   passage rerank; only a `search_resources` call without free text (pure
   metadata filters or a browse) adds `license.id` filters for every stored
@@ -65,8 +104,11 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 - **`search_passages` guidance:** the tool description and the server
   instructions now tell the model to phrase `question` as a topical statement
   naming subject and target group rather than the user's literal sentence,
-  and to say so when a passage carries only a snippet (license-gated or no
-  fulltext yet) instead of guessing.
+  and to say so instead of guessing when a passage carries only a snippet.
+  The reason given is flag-aware: with `OPEN_LICENSES_ONLY` on, a text-less
+  learning-resource passage simply has no fulltext yet, since license-gated
+  hits are already dropped before the model sees them; with it off, the
+  license-gated possibility is still named.
 
 ## [0.3.0] - 2026-08-19
 
