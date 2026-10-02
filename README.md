@@ -14,6 +14,18 @@ Mirrors: [git.edufeed.org/edufeed/nope-mcp](https://git.edufeed.org/edufeed/nope
 
 Releases are tagged (`v0.1.0`, …) and listed in [CHANGELOG.md](CHANGELOG.md).
 
+## MCP Registry
+
+[`server.json`](server.json) is the manifest nope-mcp publishes to the [official MCP
+Registry](https://registry.modelcontextprotocol.io) as `org.edufeed/nope-mcp`, pointing at the
+`https://mcp.edufeed.org/mcp` remote. Its `version` always matches `package.json` (enforced by
+`test/server-json.test.ts`).
+
+Publishing is done with the registry's [`mcp-publisher`](https://github.com/modelcontextprotocol/registry)
+CLI after DNS-based domain verification of `edufeed.org` (the registry proves ownership of the
+`org.edufeed` namespace via a TXT record, not a secret the CLI holds) — there is no key to manage
+and no command embeds one.
+
 ## Features
 
 ### Query & Browse
