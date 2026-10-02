@@ -7,6 +7,7 @@ import {
 import { buildFilter, type SearchParams } from '../relay/filters.js';
 import { eventsToAMBResources, toSimplifiedResource, type SimplifiedAMBResource } from '../utils/transform.js';
 import { findActorCandidates, type ActorCandidate } from './resolvePublisher.js';
+import { READ_ONLY } from './annotations.js';
 
 export interface ResourceSearchResult {
   total: number;
@@ -161,6 +162,7 @@ export function registerSearchTool(server: McpServer, client: AMBRelayClient): v
               'Default: the default relay set.'
           ),
       },
+      annotations: READ_ONLY,
     },
     async (params) => {
       const selection = resolveRelaysOrError(client, params.relays);

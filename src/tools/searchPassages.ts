@@ -13,6 +13,7 @@ import { buildScope } from '../spells/scope.js';
 import { resolveRelaysOrError, relaysNotSearched } from './relaySelection.js';
 import { getSessionPubkey } from './signer.js';
 import { OVERFETCH_FACTOR, PASSAGE_ALPHA, selectPassages } from './passageSelection.js';
+import { READ_ONLY } from './annotations.js';
 
 export interface FetchSpellResult {
   event: NostrEvent | null;
@@ -273,6 +274,7 @@ export function registerSearchPassagesTool(
         relays: z.array(z.string()).optional().describe('Relay selection (list_relays set), by full URL or short name (e.g. "oersi", "sodix"). First mapped relay is used.'),
         limit: z.number().min(1).max(25).optional().default(10).describe('Passages to return (1-25, default 10).'),
       },
+      annotations: READ_ONLY,
     },
     async (params, extra) => {
       const selection = resolveRelaysOrError(client, params.relays);

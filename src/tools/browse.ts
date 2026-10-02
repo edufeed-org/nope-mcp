@@ -4,6 +4,7 @@ import type { AMBRelayClient } from '../relay/client.js';
 import { eventsToAMBResources } from '../utils/transform.js';
 import type { LocalizedString } from 'amb-nostr-converter';
 import { getLabel } from '../skos/parser.js';
+import { READ_ONLY } from './annotations.js';
 
 interface VocabularyItem {
   id: string;
@@ -69,6 +70,7 @@ export function registerBrowseSubjectsTool(server: McpServer, client: AMBRelayCl
           .default(50)
           .describe('Maximum number of subjects to return'),
       },
+      annotations: READ_ONLY,
     },
     async (params) => {
       // Query a sample of resources to extract subjects
@@ -134,6 +136,7 @@ export function registerBrowseResourceTypesTool(server: McpServer, client: AMBRe
           .default(50)
           .describe('Maximum number of resource types to return'),
       },
+      annotations: READ_ONLY,
     },
     async (params) => {
       const events = await client.query({ limit: 250 });
@@ -185,6 +188,7 @@ export function registerBrowseEducationalLevelsTool(server: McpServer, client: A
           .default(50)
           .describe('Maximum number of levels to return'),
       },
+      annotations: READ_ONLY,
     },
     async (params) => {
       const events = await client.query({ limit: 250 });

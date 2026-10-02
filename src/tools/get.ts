@@ -6,6 +6,7 @@ import type { NostrEvent } from 'nostr-tools';
 import { nip19 } from 'nostr-tools';
 import { eventToAMBResource, toSimplifiedResource } from '../utils/transform.js';
 import { hasContentTransform, transformContentEvent } from '../content/transform.js';
+import { READ_ONLY } from './annotations.js';
 
 /** Decode an naddr into a d-tag + author + kind for getByDTag; null on malformed/non-naddr input. */
 export function naddrToLookup(
@@ -161,6 +162,7 @@ export function registerGetTool(server: McpServer, client: AMBRelayClient): void
               'accepted, by full URL or short name (e.g. "oersi"). Default: the default relay set.'
           ),
       },
+      annotations: READ_ONLY,
     },
     async (params) => {
       const selection = resolveRelaysOrError(client, params.relays);

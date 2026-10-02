@@ -8,6 +8,7 @@ import { buildContentFilter, type ContentSearchParams } from '../relay/filters.j
 import { transformContentEvent } from '../content/transform.js';
 import { parseSnippets, attachSnippets, SNIPPET_KIND } from '../content/snippet.js';
 import type { SimplifiedContentResult } from '../content/types.js';
+import { READ_ONLY } from './annotations.js';
 
 /**
  * Run a cross-content search: one relay-ranked REQ over the selected content
@@ -127,6 +128,7 @@ export function registerSearchContentTool(
               'Default: the default relay set.'
           ),
       },
+      annotations: READ_ONLY,
     },
     async (params) => {
       const selection = resolveRelaysOrError(client, params.relays);

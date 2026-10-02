@@ -3,6 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AMBRelayClient } from '../relay/client.js';
 import { resolveRelaysOrError } from './relaySelection.js';
 import { eventsToAMBResources } from '../utils/transform.js';
+import { READ_ONLY } from './annotations.js';
 
 /**
  * A metadata-actor spelling observed in the corpus. `field` says where the
@@ -121,6 +122,7 @@ export function registerResolvePublisherTool(server: McpServer, client: AMBRelay
               'Default: the default relay set.'
           ),
       },
+      annotations: READ_ONLY,
     },
     async (params) => {
       const selection = resolveRelaysOrError(client, params.relays);

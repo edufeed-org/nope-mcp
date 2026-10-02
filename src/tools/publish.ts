@@ -18,6 +18,7 @@ import {
   type AMBEntity,
 } from '../signer/index.js';
 import { getSignerManager } from './signer.js';
+import { PUBLISHER } from './annotations.js';
 
 // Default relays for publishing
 const DEFAULT_RELAYS = process.env.AMB_RELAYS?.split(',') || ['wss://relay.edufeed.org'];
@@ -71,6 +72,7 @@ function registerSignEventTool(server: McpServer): void {
           .optional()
           .describe('Event tags as array of arrays'),
       },
+      annotations: PUBLISHER,
     },
     async (params, extra) => {
       try {
@@ -168,6 +170,7 @@ function registerPublishEventTool(server: McpServer): void {
           .optional()
           .describe('Use NIP-65 outbox model for relay selection (default: true)'),
       },
+      annotations: PUBLISHER,
     },
     async (params, extra) => {
       try {
@@ -269,6 +272,7 @@ function registerCreateAndPublishMetadataTool(server: McpServer): void {
           .optional()
           .describe('Use NIP-65 outbox model for relay selection (default: true)'),
       },
+      annotations: PUBLISHER,
     },
     async (params, extra) => {
       try {
@@ -413,6 +417,7 @@ function registerCreateAndPublishResourceTool(server: McpServer): void {
           .optional()
           .describe('Use NIP-65 outbox model for relay selection (default: true)'),
       },
+      annotations: PUBLISHER,
     },
     async (params, extra) => {
       try {
