@@ -104,9 +104,16 @@ const indexer = IndexerClient.fromEnv(process.env.INDEXER_ENDPOINTS, process.env
 const HTTP_PORT = Number(process.env.HTTP_PORT ?? 3000);
 const HTTP_HOST = process.env.HTTP_HOST ?? '0.0.0.0';
 const OAUTH_ISSUER = process.env.OAUTH_ISSUER || 'https://auth.edufeed.org/realms/edufeed';
-const OAUTH_AUDIENCE = process.env.OAUTH_AUDIENCE || 'amb-mcp';
+// Comma-separated; a token whose aud contains ANY of these is accepted.
+// `amb-mcp` stays accepted: Keycloak still issues it (edufeed-app, claude.ai).
+const OAUTH_AUDIENCE = (process.env.OAUTH_AUDIENCE || 'nope-mcp,amb-mcp')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 const OAUTH_JWKS_URI =
   process.env.OAUTH_JWKS_URI || `${OAUTH_ISSUER}/protocol/openid-connect/certs`;
+// Fallback PRM resource for hosts outside HTTP_ALLOWED_HOSTS; allowed hosts
+// (or any host, when the list is unset) get a resource derived per request.
 const OAUTH_RESOURCE_URL =
   process.env.OAUTH_RESOURCE_URL || 'https://mcp.amb.edufeed.org/mcp';
 const HTTP_ALLOWED_HOSTS = process.env.HTTP_ALLOWED_HOSTS?.split(',').map((s) => s.trim()).filter(Boolean);
@@ -118,7 +125,7 @@ async function main() {
   if (AMB_EXTRA_RELAYS.length) console.log(`AMB Extra Relays: ${AMB_EXTRA_RELAYS.join(', ')}`);
   console.log(`Calendar Relays: ${CALENDAR_RELAYS.join(', ')}`);
   console.log(`HTTP bind: ${HTTP_HOST}:${HTTP_PORT}`);
-  console.log(`Auth: OAuth (issuer ${OAUTH_ISSUER})`);
+  console.log(`Auth: OAuth (issuer ${OAUTH_ISSUER}, audience ${OAUTH_AUDIENCE.join(' | ')})`);
   if (HTTP_ALLOWED_HOSTS?.length) console.log(`Allowed hosts: ${HTTP_ALLOWED_HOSTS.join(', ')}`);
   if (HTTP_ALLOWED_ORIGINS?.length) console.log(`Allowed origins: ${HTTP_ALLOWED_ORIGINS.join(', ')}`);
 

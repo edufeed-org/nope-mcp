@@ -7,7 +7,8 @@ export interface AuthContext {
 
 export interface AuthConfig {
   issuer: string;
-  audience: string;
+  /** Accepted audiences: a token whose `aud` contains ANY of them is valid. */
+  audience: string | string[];
   jwksUri: string;
   /** Override key resolver — tests inject a local JWKS. */
   getKey?: JWTVerifyGetKey;

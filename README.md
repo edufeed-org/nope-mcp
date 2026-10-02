@@ -124,14 +124,14 @@ node dist/http.js     # production (after `npm run build`)
 | `HTTP_ALLOWED_HOSTS` | _(unset)_ | Comma-separated Host allow-list. Enables DNS-rebinding protection when set. |
 | `HTTP_ALLOWED_ORIGINS` | _(unset)_ | Comma-separated Origin allow-list. |
 | `OAUTH_ISSUER` | `https://auth.edufeed.org/realms/edufeed` | OIDC issuer whose tokens are accepted. |
-| `OAUTH_AUDIENCE` | `amb-mcp` | Required `aud` claim in access tokens. |
+| `OAUTH_AUDIENCE` | `nope-mcp,amb-mcp` | Comma-separated accepted audiences; a token whose `aud` contains any of them is valid. |
 | `OAUTH_JWKS_URI` | `<issuer>/protocol/openid-connect/certs` | JWKS endpoint for token signature verification. |
-| `OAUTH_RESOURCE_URL` | `https://mcp.amb.edufeed.org/mcp` | Public resource URL advertised in the OAuth protected-resource metadata document. |
+| `OAUTH_RESOURCE_URL` | `https://mcp.amb.edufeed.org/mcp` | Fallback PRM resource for a host not in `HTTP_ALLOWED_HOSTS`. Otherwise the resource is derived per request (RFC 9728): `/.well-known/oauth-protected-resource` → `https://<host>/`, `/.well-known/oauth-protected-resource/mcp` → `https://<host>/mcp`. |
 
 **Authentication model:** the HTTP transport is an OAuth 2.0 resource server.
 
 - A request **without** an `Authorization` header gets an anonymous **read-only** session (`mcp:read`): search, get, browse, resolve, SKOS lookups.
-- A request with a **valid JWT** (issued by `OAUTH_ISSUER` for audience `OAUTH_AUDIENCE`) is granted the token's scopes: `mcp:read` and/or `mcp:extract` (the budget-spending `extract_metadata` tool). An invalid token is rejected with 401.
+- A request with a **valid JWT** (issued by `OAUTH_ISSUER` for one of the `OAUTH_AUDIENCE` audiences) is granted the token's scopes: `mcp:read` and/or `mcp:extract` (the budget-spending `extract_metadata` tool). An invalid token is rejected with 401.
 - **Write/signing tools are never exposed over HTTP** — they are only available on the stdio and Nostr transports. Insufficient scope means the tool is simply absent from `tools/list`.
 
 The server exposes:

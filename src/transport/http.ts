@@ -14,9 +14,16 @@
  *
  * Authentication: read tools are served anonymously (a tokenless /mcp request
  * gets an mcp:read session). A supplied token is fully validated (bad token →
- * 401); a valid token additionally grants its scopes (e.g. mcp:extract). The
- * PRM document is served unauthenticated at
- * /.well-known/oauth-protected-resource (RFC 9728).
+ * 401); a valid token additionally grants its scopes (e.g. mcp:extract).
+ *
+ * OAuth metadata is host-aware (RFC 9728): the server answers on several
+ * hostnames and on both `/` and `/mcp`, and the PRM `resource` must equal the
+ * URL the client connected to. So the PRM is built per request from the
+ * forwarded scheme + host (`trust proxy` is on — Traefik terminates TLS):
+ * `/.well-known/oauth-protected-resource` describes `https://<host>/`,
+ * `/.well-known/oauth-protected-resource/mcp` describes `https://<host>/mcp`,
+ * and a 401 points `resource_metadata` at the PRM matching the request path.
+ * A host outside `allowedHosts` (when configured) gets `auth.resourceUrl`.
  *
  * Per-connection config: the query string of the `initialize` request is
  * handed to `buildMcpServer`, so a client can pin a session's behaviour in
@@ -36,7 +43,7 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 
 import type { AuthContext } from './auth.js';
 import { AuthError } from './auth.js';
-import { buildProtectedResourceMetadata } from './prm.js';
+import { buildProtectedResourceMetadata, protectedResourceMetadataUrl } from './prm.js';
 
 /**
  * The `initialize` query string named a configuration the session factory
@@ -56,9 +63,13 @@ export class SessionConfigError extends Error {
 export interface HttpServerOptions {
   port: number;
   host: string;
-  /** OAuth resource-server config. When set, every /mcp request needs a valid JWT. */
+  /** OAuth resource-server config. When set, a supplied token must be a valid JWT. */
   auth?: {
     verify: (token: string) => Promise<AuthContext>;
+    /**
+     * Fallback resource URL, advertised for a request whose host is not in
+     * `allowedHosts`. Otherwise the resource is derived from the request.
+     */
     resourceUrl: string;
     issuer: string;
     scopes: string[];
@@ -101,6 +112,18 @@ function isInfoDocumentRequest(req: Request): boolean {
   return true;
 }
 
+/** Public host (with any non-default port) the client addressed, proxy-aware. */
+function requestHost(req: Request): string | undefined {
+  // `trust proxy` is on, so X-Forwarded-Host (set by Traefik) wins over Host.
+  const forwarded = req.get('x-forwarded-host')?.split(',')[0]?.trim();
+  return forwarded || req.get('host') || undefined;
+}
+
+function isHostAllowed(host: string, allowedHosts: string[]): boolean {
+  const hostname = host.replace(/:\d+$/, '');
+  return allowedHosts.includes(host) || allowedHosts.includes(hostname);
+}
+
 export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServerHandle> {
   const {
     port,
@@ -113,6 +136,8 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
   } = opts;
 
   const app = express();
+  // Behind Traefik: req.protocol follows X-Forwarded-Proto.
+  app.set('trust proxy', true);
   app.use(express.json({ limit: '4mb' }));
   app.use(
     cors({
@@ -133,20 +158,37 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
     });
   });
 
-  // PRM document served unauthenticated (RFC 9728).
+  /** The protected resource URL for `path` as addressed by this request. */
+  const resourceFor = (req: Request, path: '/' | '/mcp', fallback: string): string => {
+    const host = requestHost(req);
+    if (!host) return fallback;
+    if (allowedHosts && allowedHosts.length > 0 && !isHostAllowed(host, allowedHosts)) return fallback;
+    return `${req.protocol}://${host}${path}`;
+  };
+
+  // PRM documents served unauthenticated (RFC 9728), one per MCP path.
   if (opts.auth) {
-    const prm = buildProtectedResourceMetadata({
-      resource: opts.auth.resourceUrl,
-      issuer: opts.auth.issuer,
-      scopes: opts.auth.scopes,
-    });
-    app.get('/.well-known/oauth-protected-resource', (_req, res) => res.json(prm));
+    const auth = opts.auth;
+    const servePrm = (path: '/' | '/mcp') => (req: Request, res: Response) => {
+      res.json(
+        buildProtectedResourceMetadata({
+          resource: resourceFor(req, path, auth.resourceUrl),
+          issuer: auth.issuer,
+          scopes: auth.scopes,
+        }),
+      );
+    };
+    app.get('/.well-known/oauth-protected-resource', servePrm('/'));
+    app.get('/.well-known/oauth-protected-resource/mcp', servePrm('/mcp'));
   }
 
-  // WWW-Authenticate challenge value for 401 responses.
-  const challenge = opts.auth
-    ? `Bearer resource_metadata="${opts.auth.resourceUrl.replace(/\/mcp$/, '')}/.well-known/oauth-protected-resource"`
-    : 'Bearer realm="nope-mcp"';
+  // WWW-Authenticate challenge value for 401 responses on `/` or `/mcp`.
+  const challengeFor = (req: Request): string => {
+    if (!opts.auth) return 'Bearer realm="nope-mcp"';
+    const path = req.path === '/mcp' ? '/mcp' : '/';
+    const resource = resourceFor(req, path, opts.auth.resourceUrl);
+    return `Bearer resource_metadata="${protectedResourceMetadataUrl(resource)}"`;
+  };
 
   // JWT middleware applied to /mcp routes.
   const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
@@ -161,7 +203,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
 
     // A token was supplied → it must be a valid JWT.
     if (!opts.auth) {
-      res.setHeader('WWW-Authenticate', challenge);
+      res.setHeader('WWW-Authenticate', challengeFor(req));
       return res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized' }, id: null });
     }
     try {
@@ -170,7 +212,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
       next();
     } catch (err) {
       const status = err instanceof AuthError ? err.status : 401;
-      res.setHeader('WWW-Authenticate', challenge);
+      res.setHeader('WWW-Authenticate', challengeFor(req));
       res.status(status).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized' }, id: null });
     }
   };
@@ -265,7 +307,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
       res.json({
         name: serverName,
         version: serverVersion,
-        mcp: `${req.protocol}://${req.get('host')}/`,
+        mcp: `${req.protocol}://${requestHost(req)}/`,
         docs: DOCS_URL,
         transport: 'streamable-http',
       });
