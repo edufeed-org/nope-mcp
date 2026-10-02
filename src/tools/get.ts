@@ -116,10 +116,26 @@ export async function runGetResource(
   return formatAMB(event, lang);
 }
 
+/** The openLicense sentence, worded to match whether search is currently license-filtered. */
+function openLicenseNote(openLicensesOnly: boolean): string {
+  return openLicensesOnly
+    ? 'Lookups are not license-filtered: a learning resource carries openLicense (true for ' +
+        'CC0, Public Domain, CC BY, CC BY-SA — the open licenses that search results are ' +
+        'currently limited to). '
+    : 'A learning resource carries openLicense (true for CC0, Public Domain, CC BY, CC BY-SA); ' +
+        'license filtering is currently off, so search results may include resources under ' +
+        'other licenses or with no license at all. ';
+}
+
 /**
  * Register the get_resource tool
  */
-export function registerGetTool(server: McpServer, client: AMBRelayClient): void {
+export function registerGetTool(
+  server: McpServer,
+  client: AMBRelayClient,
+  options?: { openLicensesOnly?: boolean }
+): void {
+  const openLicensesOnly = options?.openLicensesOnly ?? true;
   server.registerTool(
     'get_resource',
     {
@@ -131,9 +147,8 @@ export function registerGetTool(server: McpServer, client: AMBRelayClient): void
         'measures, publications); non-resource kinds return the same shape as their ' +
         'search results. Bare identifier/eventId lookups (no naddr) always resolve the ' +
         'full educational-resource metadata (kind 30142), including creator/publisher ' +
-        'and educational properties. Lookups are not license-filtered: a learning ' +
-        'resource carries openLicense (true for CC0, Public Domain, CC BY, CC BY-SA — the ' +
-        'resources searches return). ' +
+        'and educational properties. ' +
+        openLicenseNote(openLicensesOnly) +
         'When presenting the resource, render a markdown link the user can open: prefer ' +
         'its sourcePage (the original source page); fall back to url (the edufeed viewer) ' +
         'only when sourcePage is absent.',

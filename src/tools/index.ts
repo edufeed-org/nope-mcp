@@ -58,7 +58,7 @@ export function registerTools(
     const openLicensesOnly = options?.openLicensesOnly ?? true;
     registerSearchTool(server, client, { openLicensesOnly });
     registerSearchContentTool(server, client, { passagesAvailable, openLicensesOnly });
-    registerGetTool(server, client);
+    registerGetTool(server, client, { openLicensesOnly });
     registerBrowseSubjectsTool(server, client);
     registerBrowseResourceTypesTool(server, client);
     registerBrowseEducationalLevelsTool(server, client);

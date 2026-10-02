@@ -1,7 +1,45 @@
 export const SERVER_NAME = 'nope-mcp';
 export const SERVER_VERSION = '0.3.0';
 
-export const SERVER_INSTRUCTIONS = `This server is the gateway to the AMB educational-metadata relays — a Nostr-based store of learning resources, long-form articles, wiki pages, scientific publications, and calendar events. Use these tools to answer questions about educational content, its authors, and upcoming events; they abstract the Nostr layer, so query them rather than reading the relays directly. Identifiers like naddr, npub, and pubkey are NIP-19/Nostr values these tools return — pass them back as-is rather than constructing them yourself. Search results contain only openly licensed learning resources (CC0, Public Domain, CC BY, CC BY-SA); articles, wikis, publications, projects and measures carry no license and are all included.
+/** The open-license sentence, included only while OPEN_LICENSES_ONLY is on. */
+function openLicenseSentence(openLicensesOnly: boolean): string {
+  return openLicensesOnly
+    ? ' Search results for learning resources are limited to open licenses (CC0, the Public Domain Mark, CC BY, CC BY-SA); articles, wikis, publications, and calendar events carry no license filter and are returned regardless of license.'
+    : '';
+}
+
+/**
+ * English opening paragraph aimed at any MCP client, not only edufeed's
+ * German teacher base — this server is listed in public MCP directories.
+ * Pure function of the OPEN_LICENSES_ONLY setting so it never claims a
+ * license policy that isn't actually in effect.
+ */
+function openingParagraph(openLicensesOnly: boolean): string {
+  return (
+    `nope-mcp is a search gateway to edufeed's open educational resources on Nostr: learning ` +
+    `resources described with AMB metadata — a schema.org/LRMI-based profile for educational ` +
+    `content — plus long-form articles, wiki pages, scientific publications, and educational ` +
+    `calendar events. The default relay alone holds thousands of learning resources, and the ` +
+    `optional extra relays (see list_relays) add tens of thousands more, for well over 100,000 ` +
+    `resources across all relays combined.` +
+    openLicenseSentence(openLicensesOnly) +
+    ` Most requests fall into one of two patterns: finding materials to browse, or getting a ` +
+    `direct answer to a question with citations drawn from resources' fulltext — the sections ` +
+    `below route each case to the right tool. Use these tools to answer questions about ` +
+    `educational content, its authors, and upcoming events rather than reading the relays ` +
+    `directly; identifiers like naddr, npub, and pubkey are NIP-19/Nostr values these tools ` +
+    `return, so pass them back as-is rather than constructing them yourself. The routing ` +
+    `guidance below gives example phrases in German, the language of edufeed's primary user ` +
+    `base, but the same tool-call patterns apply to requests in any language.`
+  );
+}
+
+/**
+ * Build the MCP server `instructions` string. Config-aware so it never
+ * misdescribes the open-license policy when OPEN_LICENSES_ONLY is off.
+ */
+export function buildServerInstructions({ openLicensesOnly }: { openLicensesOnly: boolean }): string {
+  return `${openingParagraph(openLicensesOnly)}
 
 Two flows cover most questions:
 - By name ("materials or events by Jörg Lohrer"): call resolve_author(name) to turn a person or organisation name into pubkey candidates, then pass the chosen pubkey to search_content (and/or search_calendar_events) as authors:[pubkey].
@@ -19,3 +57,4 @@ Authorship has two distinct layers — never conflate them: eventAuthor is the N
 Searches run against the default relay set. list_relays may advertise extraRelays — additional relays holding different corpora (e.g. a broader aggregation) that are only queried when you pass them via the relays parameter of search_content, search_resources, or get_resource. When a search on the defaults comes up short, or the user asks for a specific relay's holdings, check list_relays and re-search with relays set; fetch follow-up details with the same relays value the search used.
 
 The server also browses controlled vocabularies (browse_*, skos_* tools) and, for authenticated clients, signs and publishes new metadata (signer_*, create_and_publish_*).`;
+}

@@ -18,7 +18,7 @@ import { AMBRelayClient } from './relay/client.js';
 import { registerTools } from './tools/index.js';
 import { registerResources } from './resources/index.js';
 import { loadAuthorSets, setAuthorDirectory, setCalendarAuthorDirectory } from './authors.js';
-import { SERVER_NAME, SERVER_VERSION, SERVER_INSTRUCTIONS } from './server-info.js';
+import { SERVER_NAME, SERVER_VERSION, buildServerInstructions } from './server-info.js';
 import { IndexerClient } from './indexer/client.js';
 import { parseOpenLicensesOnly } from './license/open.js';
 
@@ -63,7 +63,7 @@ async function main() {
   // Create MCP server
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { instructions: SERVER_INSTRUCTIONS },
+    { instructions: buildServerInstructions({ openLicensesOnly: OPEN_LICENSES_ONLY }) },
   );
 
   // Register tools and resources

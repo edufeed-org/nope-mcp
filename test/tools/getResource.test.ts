@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { nip19 } from 'nostr-tools';
 import { naddrToLookup, runGetResource } from '../../src/tools/get.js';
+import { buildSessionServer } from '../../src/session.js';
 
 function pk(n: number): string {
   return n.toString(16).padStart(64, '0');
@@ -145,5 +146,30 @@ describe('runGetResource openLicense flag', () => {
   it('leaves non-resource kinds and misses without the flag', async () => {
     const miss = await runGetResource(fakeGetClient(null), { identifier: 'r1' });
     expect(miss).not.toHaveProperty('openLicense');
+  });
+});
+
+function getResourceDescription(openLicensesOnly: boolean): string {
+  const session = buildSessionServer(['wss://relay.edufeed.org'], ['wss://relay.edufeed.org'], undefined, {
+    openLicensesOnly,
+  });
+  const registry = (
+    session.server as unknown as { _registeredTools: Record<string, { description?: string }> }
+  )._registeredTools;
+  const description = registry['get_resource'].description ?? '';
+  session.dispose();
+  return description;
+}
+
+describe('get_resource tool description matches the OPEN_LICENSES_ONLY setting', () => {
+  it('says search is limited to open licenses when the setting is on', () => {
+    const description = getResourceDescription(true);
+    expect(description).toMatch(/the open licenses that search results are currently limited to/);
+  });
+
+  it('says license filtering is off, instead of claiming search is open-only', () => {
+    const description = getResourceDescription(false);
+    expect(description).not.toMatch(/currently limited to/);
+    expect(description).toMatch(/license filtering is currently off/);
   });
 });
