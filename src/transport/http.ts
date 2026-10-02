@@ -220,7 +220,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
   // WWW-Authenticate challenge value for 401 responses on `/` or `/mcp`.
   const challengeFor = (req: Request): string => {
     if (!opts.auth) return 'Bearer realm="nope-mcp"';
-    const path = req.path === '/mcp' ? '/mcp' : '/';
+    const path = req.path === '/mcp' || req.path === '/mcp/' ? '/mcp' : '/';
     const resource = resourceFor(req, path, opts.auth.resourceUrl);
     try {
       return `Bearer resource_metadata="${protectedResourceMetadataUrl(resource)}"`;

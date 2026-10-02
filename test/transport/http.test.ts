@@ -250,6 +250,18 @@ describe('host-aware OAuth metadata (RFC 9728)', () => {
     );
   });
 
+  it('points a 401 on /mcp/ (trailing slash) at the same path-suffixed PRM as /mcp', async () => {
+    const res = await fetch(`${base}/mcp/`, {
+      method: 'POST',
+      headers: { ...viaTraefik('mcp.edufeed.org'), 'Content-Type': 'application/json', Authorization: 'Bearer not-a-jwt' },
+      body: '{}',
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get('www-authenticate')).toBe(
+      'Bearer resource_metadata="https://mcp.edufeed.org/.well-known/oauth-protected-resource/mcp"',
+    );
+  });
+
   it('points a 401 on / at the root PRM of the requested host', async () => {
     const res = await fetch(`${base}/`, {
       method: 'POST',
