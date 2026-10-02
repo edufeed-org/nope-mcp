@@ -10,7 +10,9 @@ import type { NostrEvent } from 'nostr-tools';
 
 const OPEN_PATTERNS = [
   /^https:\/\/creativecommons\.org\/publicdomain\/(zero|mark)\/\d+(\.\d+)?$/,
-  /^https:\/\/creativecommons\.org\/licenses\/(by|by-sa)\/\d+(\.\d+)?(\/[a-z]{2,3})?$/,
+  // Optional ported-jurisdiction segment (de, us, igo, …) — never a license
+  // element: `…/by/4.0/nc` must not read as an open port.
+  /^https:\/\/creativecommons\.org\/licenses\/(by|by-sa)\/\d+(\.\d+)?(\/(?!(?:nc|nd|sa)$)[a-z]{2,3})?$/,
 ];
 
 /**
@@ -40,11 +42,12 @@ export function eventHasOpenLicense(event: NostrEvent): boolean {
 
 /**
  * The exact `license:id` strings stored on the AMB relays that classify open
- * (inventory: test/fixtures/license-ids.json, sampled 2026-10-02). The relay
- * matches field filters exactly, so every stored spelling is listed; a test
- * keeps this in lock-step with the fixture. Variants missing here are only
- * ranked out relay-side — the isOpenLicense post-filter never lets a
- * non-open one through.
+ * (inventory: test/fixtures/license-ids.json, sampled 2026-10-02), used as
+ * `license.id:` filters by search_resources only when the search has no free
+ * text (see buildFilter). The relay matches field filters exactly, so every
+ * stored spelling is listed; a test keeps this in lock-step with the fixture.
+ * An open variant missing here is only left out relay-side — the
+ * isOpenLicense post-filter never lets a non-open one through.
  */
 export const OPEN_LICENSE_URIS: readonly string[] = [
   'https://creativecommons.org/licenses/by-sa/4.0/',

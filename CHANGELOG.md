@@ -37,10 +37,11 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
   the Public Domain Mark, CC BY or CC BY-SA — the allowlist amb-indexer uses
   for fulltext. NC/ND, all-rights-reserved and unlicensed resources are left
   out; articles, wikis, publications, projects and measures carry no license
-  and stay unfiltered. `search_resources` adds `license.id` filters for every
-  stored open spelling to the relay query; `search_content` and
-  `search_passages` over-fetch and filter client-side (a relay field filter
-  would disable passage rerank). `get_resource` still resolves any resource
+  and stay unfiltered. Searches with free text over-fetch and filter
+  client-side, because any relay field filter would disable amb-relay's
+  passage rerank; only a `search_resources` call without free text (pure
+  metadata filters or a browse) adds `license.id` filters for every stored
+  open spelling to the relay query. `get_resource` still resolves any resource
   and reports `openLicense`. `OPEN_LICENSES_ONLY=false` restores unfiltered
   results.
 - **Renamed to `nope-mcp`** (formerly `amb-mcp`). The package name, MCP

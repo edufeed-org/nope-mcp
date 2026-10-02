@@ -125,7 +125,7 @@ describe('runContentSearch with openLicensesOnly', () => {
     const client = recordingClient([res('a', BY), res('b', NC), res('c', BY), res('d', BY)]);
     const out = await runContentSearch(client, { limit: 2, types: ['resource'], openLicensesOnly: true });
     expect(client.filters[0].limit).toBe(6);
-    expect(out.results.map((r) => (r as { id?: string; naddr: string }).naddr)).toHaveLength(2);
+    expect(out.results.map((r) => (r as { title?: string }).title)).toEqual(['R a', 'R c']);
     expect(out.total).toBe(2);
   });
 

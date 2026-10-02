@@ -35,15 +35,19 @@ export async function runResourceSearch(
   params: SearchParams,
   relays?: string[]
 ): Promise<ResourceSearchResult> {
-  const { filter, search } = buildFilter(params);
+  const { filter, search, limit } = buildFilter(params);
 
   const diag = newRelayDiagnostics();
   const fetched = search
     ? await client.search(search, filter, relays, diag)
     : await client.query(filter, relays, diag);
-  // Safety net behind the relay-side license filter: a stored spelling not
-  // in OPEN_LICENSE_URIS can never let a non-open resource through.
-  const events = params.openLicensesOnly ? fetched.filter(eventHasOpenLicense) : fetched;
+  // Open-licenses-only: a free-text search was over-fetched without a relay
+  // license filter (keeps chunk rerank), so this is the filter; a pure
+  // field-filter search carried license.id filters and this is the safety net
+  // for spellings missing from OPEN_LICENSE_URIS. Relay order is preserved.
+  const events = params.openLicensesOnly
+    ? fetched.filter(eventHasOpenLicense).slice(0, limit)
+    : fetched;
 
   const resources = eventsToAMBResources(events);
   const lang = params.language || 'de';

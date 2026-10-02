@@ -80,16 +80,25 @@ describe('runResourceSearch with openLicensesOnly', () => {
   const BY = 'https://creativecommons.org/licenses/by/4.0/';
   const NC = 'https://creativecommons.org/licenses/by-nc/4.0/';
 
-  it('asks the relay for open licenses only and drops non-open stragglers', async () => {
+  it('free text: no relay license filter, post-filters and trims to limit in relay order', async () => {
     const client = fakeClient([
       resourceEvent('r1', undefined, BY),
       resourceEvent('r2', undefined, NC),
       resourceEvent('r3'),
+      resourceEvent('r4', undefined, BY),
+      resourceEvent('r5', undefined, BY),
     ]);
-    const out = await runResourceSearch(client, { query: 'mathe', openLicensesOnly: true });
-    expect(client.searches[0]).toMatch(/^mathe license\.id:/);
+    const out = await runResourceSearch(client, { query: 'mathe', limit: 2, openLicensesOnly: true });
+    expect(client.searches).toEqual(['mathe']);
+    expect(out.total).toBe(2);
+    expect(out.resources.map((r) => r.id)).toEqual(['d-r1', 'd-r4']);
+  });
+
+  it('pure field filters: relay license filter plus the safety-net post-filter', async () => {
+    const client = fakeClient([resourceEvent('r1', 'X', BY), resourceEvent('r2', 'X', NC)]);
+    const out = await runResourceSearch(client, { publisherName: 'X', openLicensesOnly: true });
+    expect(client.searches[0]).toMatch(/^publisher\.name:X license\.id:/);
     expect(client.searches[0]).toContain(`license.id:${BY}`);
-    expect(out.total).toBe(1);
     expect(out.resources.map((r) => r.id)).toEqual(['d-r1']);
   });
 
