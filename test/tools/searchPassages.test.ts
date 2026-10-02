@@ -247,3 +247,42 @@ describe('relay outage vs empty scope', () => {
       .rejects.toMatchObject({ code: 'empty_scope' });
   });
 });
+
+describe('runSearchPassages with openLicensesOnly', () => {
+  const res = (d: string) => `30142:${'a'.repeat(64)}:${d}`;
+  const art = `30023:${'b'.repeat(64)}:art`;
+  const hit = (coord: string, score: number, extra: Record<string, unknown> = {}) =>
+    ({ ...HIT, chunk_id: `${coord}:0`, event_coord: coord, score, ...extra });
+
+  it('over-fetches twice as much and adds no license filter to the indexer query', async () => {
+    const d = deps();
+    await runSearchPassages(d, { question: 'q', kinds: [30142], openLicensesOnly: true }, undefined);
+    expect(d.searchChunks).toHaveBeenCalledWith(RELAY, {
+      q: 'q', k: 60, filter: { kinds: [30142] }, alpha: 0.7,
+    });
+  });
+
+  it('drops license-gated resource passages, keeps other kinds, and floors on the open hits', async () => {
+    const d = deps({
+      searchChunks: vi.fn(async () => ({
+        total: 5,
+        hits: [
+          hit(res('gated'), 1.0), // no text → indexer license gate said not open
+          hit(res('nc'), 0.9, { text: 'volltext', amb: { license: 'https://creativecommons.org/licenses/by-nc/4.0/' } }),
+          hit(art, 0.2), // article: no license concept, snippet-only is fine
+          hit(res('open'), 0.15, { text: 'volltext', amb: { license: 'https://creativecommons.org/licenses/by-sa/4.0/' } }),
+          hit(res('open-nocache'), 0.09, { text: 'volltext' }), // below 0.1 × the dropped top hit
+        ],
+      })),
+    });
+    const out = await runSearchPassages(d, { question: 'q', kinds: [30142, 30023], openLicensesOnly: true }, undefined);
+    expect(out.passages.map((p) => p.event_coord)).toEqual([art, res('open'), res('open-nocache')]);
+  });
+
+  it('keeps license-gated passages when the switch is off', async () => {
+    const d = deps({ searchChunks: vi.fn(async () => ({ total: 1, hits: [hit(res('gated'), 1.0)] })) });
+    const out = await runSearchPassages(d, { question: 'q', kinds: [30142], openLicensesOnly: false }, undefined);
+    expect(d.searchChunks).toHaveBeenCalledWith(RELAY, expect.objectContaining({ k: 30 }));
+    expect(out.passages).toHaveLength(1);
+  });
+});

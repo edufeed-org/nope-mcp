@@ -32,6 +32,17 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ### Changed
 
+- **Open-licensed results only:** `search_resources`, `search_content` and
+  `search_passages` return learning resources (kind 30142) only under CC0,
+  the Public Domain Mark, CC BY or CC BY-SA — the allowlist amb-indexer uses
+  for fulltext. NC/ND, all-rights-reserved and unlicensed resources are left
+  out; articles, wikis, publications, projects and measures carry no license
+  and stay unfiltered. `search_resources` adds `license.id` filters for every
+  stored open spelling to the relay query; `search_content` and
+  `search_passages` over-fetch and filter client-side (a relay field filter
+  would disable passage rerank). `get_resource` still resolves any resource
+  and reports `openLicense`. `OPEN_LICENSES_ONLY=false` restores unfiltered
+  results.
 - **Renamed to `nope-mcp`** (formerly `amb-mcp`). The package name, MCP
   server name, HTTP `WWW-Authenticate` realm, and docs now say `nope-mcp`.
   `amb-mcp` remains a documented alias and a valid OAuth audience; existing

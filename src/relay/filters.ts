@@ -2,6 +2,7 @@ import type { Filter } from 'nostr-tools';
 import type { ContentType } from '../content/types.js';
 import { SNIPPET_KIND } from '../content/snippet.js';
 import { normalizeCommunityPubkey } from '../utils/community.js';
+import { OPEN_LICENSE_URIS } from '../license/open.js';
 
 /**
  * Parameters for searching AMB resources
@@ -29,6 +30,12 @@ export interface SearchParams {
   authors?: string[];
   /** Maximum number of results (1-250, default: 20) */
   limit?: number;
+  /**
+   * Restrict to openly licensed resources: one `license.id:<uri>` filter per
+   * OPEN_LICENSE_URIS entry. The relay ORs repeated filters on the same base
+   * field ("license") and ANDs them with every other field filter.
+   */
+  openLicensesOnly?: boolean;
 }
 
 export interface BuildFilterResult {
@@ -96,6 +103,9 @@ export function buildFilter(params: SearchParams): BuildFilterResult {
     searchParts.push(
       `educationalLevel.prefLabel.${language}:${escapeSearchValue(params.educationalLevelLabel)}`
     );
+  }
+  if (params.openLicensesOnly) {
+    for (const uri of OPEN_LICENSE_URIS) searchParts.push(`license.id:${uri}`);
   }
 
   return {

@@ -12,7 +12,9 @@ import { resolveSpell } from '../spells/resolve.js';
 import { buildScope } from '../spells/scope.js';
 import { resolveRelaysOrError, relaysNotSearched } from './relaySelection.js';
 import { getSessionPubkey } from './signer.js';
-import { OVERFETCH_FACTOR, PASSAGE_ALPHA, selectPassages } from './passageSelection.js';
+import {
+  OVERFETCH_FACTOR, LICENSE_OVERFETCH_FACTOR, PASSAGE_ALPHA, selectPassages, isOpenPassageHit,
+} from './passageSelection.js';
 import { READ_ONLY } from './annotations.js';
 
 export interface FetchSpellResult {
@@ -39,6 +41,8 @@ export interface SearchPassagesParams extends InlineScopeParams {
   spell?: string;
   me?: string;
   limit?: number;
+  /** Drop resource (30142) passages that are not openly licensed; set by the server config. */
+  openLicensesOnly?: boolean;
 }
 
 function decodeSpellRef(v: string): { id: string; hints: string[] } {
@@ -206,12 +210,16 @@ export async function runSearchPassages(
   }
   // Over-fetch with vector-leaning ranking, then cap per document and apply
   // the relative score floor so `limit` passages come from several sources.
+  // The license filter runs on the hits, never in the indexer query, and
+  // before selection so the floor is relative to the best open hit.
   const limit = Math.min(params.limit ?? 10, 25);
-  const k = Math.min(limit * OVERFETCH_FACTOR, 100);
+  const factor = OVERFETCH_FACTOR * (params.openLicensesOnly ? LICENSE_OVERFETCH_FACTOR : 1);
+  const k = Math.min(limit * factor, 100);
   const res = await deps.searchChunks(deps.relay, { q: params.question, k, filter: scope.chunkFilter, alpha: PASSAGE_ALPHA });
+  const hits = params.openLicensesOnly ? res.hits.filter(isOpenPassageHit) : res.hits;
 
   return {
-    passages: selectPassages(res.hits, limit),
+    passages: selectPassages(hits, limit),
     scope: {
       spell: spellToEventTemplate(spell),
       ...(spellEventId ? { spell_event_id: spellEventId } : {}),
@@ -227,8 +235,10 @@ export function registerSearchPassagesTool(
   server: McpServer,
   client: AMBRelayClient,
   spellClient: AMBRelayClient,
-  indexer: IndexerClient
+  indexer: IndexerClient,
+  opts: { openLicensesOnly?: boolean } = {}
 ): void {
+  const openLicensesOnly = opts.openLicensesOnly ?? true;
   server.registerTool(
     'search_passages',
     {
@@ -245,6 +255,10 @@ export function registerSearchPassagesTool(
         'Kindern"), not as the user\'s literal sentence ("Wie kann ich …?"). Results are ' +
         'capped at two passages per document; a passage with only a snippet and no text is ' +
         'either license-gated or has no fulltext yet — say so instead of guessing. ' +
+        (openLicensesOnly
+          ? 'Educational-resource passages come only from openly licensed resources (CC0, ' +
+            'Public Domain, CC BY, CC BY-SA); other content types are not license-filtered. '
+          : '') +
         'Scope is required but simple: with ' +
         'no source restriction from the user, pass the content kinds (e.g. kinds:[30142] ' +
         'for educational resources, [30040,30041] for publications, [30023] for articles). ' +
@@ -290,7 +304,7 @@ export function registerSearchPassagesTool(
         searchChunks: (r, body) => indexer.searchChunks(r, body),
       };
       try {
-        const out = await runSearchPassages(deps, params as SearchPassagesParams, extra);
+        const out = await runSearchPassages(deps, { ...(params as SearchPassagesParams), openLicensesOnly }, extra);
         const notSearched = relaysNotSearched(client, [relay]);
         return {
           content: [{

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { selectPassages, MAX_PASSAGES_PER_DOC, MIN_SCORE_RATIO } from '../../src/tools/passageSelection.js';
+import { selectPassages, isOpenPassageHit, MAX_PASSAGES_PER_DOC, MIN_SCORE_RATIO } from '../../src/tools/passageSelection.js';
 import type { PassageHit } from '../../src/indexer/client.js';
 
 const hit = (coord: string, score: number, idx = 0): PassageHit =>
@@ -23,5 +23,25 @@ describe('selectPassages', () => {
   });
   it('empty input → empty output', () => {
     expect(selectPassages([], 5)).toEqual([]);
+  });
+});
+
+describe('isOpenPassageHit', () => {
+  const pk = 'a'.repeat(64);
+  const h = (coord: string, extra: Partial<PassageHit> = {}) => ({ ...hit(coord, 1), ...extra } as PassageHit);
+  it('passes every non-resource kind, with or without text', () => {
+    expect(isOpenPassageHit(h(`30023:${pk}:a`))).toBe(true);
+    expect(isOpenPassageHit(h(`30041:${pk}:a`, { text: 't' }))).toBe(true);
+  });
+  it('requires indexer-released text on a resource passage', () => {
+    expect(isOpenPassageHit(h(`30142:${pk}:a`))).toBe(false);
+    expect(isOpenPassageHit(h(`30142:${pk}:a`, { text: '' }))).toBe(false);
+    expect(isOpenPassageHit(h(`30142:${pk}:a`, { text: 't' }))).toBe(true);
+  });
+  it('also rejects a resource whose cached license is not open', () => {
+    const nc = { license: 'https://creativecommons.org/licenses/by-nc-sa/4.0/' };
+    const by = { license: 'https://creativecommons.org/licenses/by/4.0/' };
+    expect(isOpenPassageHit(h(`30142:${pk}:a`, { text: 't', amb: nc }))).toBe(false);
+    expect(isOpenPassageHit(h(`30142:${pk}:a`, { text: 't', amb: by }))).toBe(true);
   });
 });

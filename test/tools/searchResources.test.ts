@@ -2,11 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { runResourceSearch } from '../../src/tools/search.js';
 import type { NostrEvent } from 'nostr-tools';
 
-function resourceEvent(id: string, publisher?: string): NostrEvent {
+function resourceEvent(id: string, publisher?: string, license?: string): NostrEvent {
   const tags: string[][] = [
     ['d', `d-${id}`],
     ['name', `Resource ${id}`],
   ];
+  if (license) tags.push(['license:id', license]);
   if (publisher) {
     tags.push(['publisher:name', publisher], ['publisher:type', 'Organization']);
   }
@@ -72,5 +73,46 @@ describe('runResourceSearch did-you-mean fallback', () => {
     expect(out.total).toBe(0);
     expect(out.actorCandidates).toBeUndefined();
     expect(out.hint).toContain('exact');
+  });
+});
+
+describe('runResourceSearch with openLicensesOnly', () => {
+  const BY = 'https://creativecommons.org/licenses/by/4.0/';
+  const NC = 'https://creativecommons.org/licenses/by-nc/4.0/';
+
+  it('asks the relay for open licenses only and drops non-open stragglers', async () => {
+    const client = fakeClient([
+      resourceEvent('r1', undefined, BY),
+      resourceEvent('r2', undefined, NC),
+      resourceEvent('r3'),
+    ]);
+    const out = await runResourceSearch(client, { query: 'mathe', openLicensesOnly: true });
+    expect(client.searches[0]).toMatch(/^mathe license\.id:/);
+    expect(client.searches[0]).toContain(`license.id:${BY}`);
+    expect(out.total).toBe(1);
+    expect(out.resources.map((r) => r.id)).toEqual(['d-r1']);
+  });
+
+  it('searches (never plain-queries) a filterless browse so the license filter applies', async () => {
+    let queried = false;
+    const client = { ...fakeClient([resourceEvent('r1', undefined, BY)]), query: async () => { queried = true; return []; } };
+    const out = await runResourceSearch(client, { openLicensesOnly: true });
+    expect(queried).toBe(false);
+    expect(client.searches[0]).toMatch(/^license\.id:/);
+    expect(out.total).toBe(1);
+  });
+
+  it('says in the zero-match hint that only open resources are searched', async () => {
+    const client = fakeClient([], [resourceEvent('r1', 'LEHRE LADEN', NC)]);
+    const out = await runResourceSearch(client, { publisherName: 'Lehreladen', openLicensesOnly: true });
+    expect(out.total).toBe(0);
+    expect(out.hint).toContain('openly licensed');
+  });
+
+  it('keeps non-open resources when the switch is off', async () => {
+    const client = fakeClient([resourceEvent('r1', undefined, NC), resourceEvent('r2')]);
+    const out = await runResourceSearch(client, { query: 'mathe', openLicensesOnly: false });
+    expect(client.searches).toEqual(['mathe']);
+    expect(out.total).toBe(2);
   });
 });

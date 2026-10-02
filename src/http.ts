@@ -25,6 +25,7 @@ import { SERVER_NAME, SERVER_VERSION } from './server-info.js';
 import type { ToolProfile } from './tools/index.js';
 import { AMBRelayClient } from './relay/client.js';
 import { IndexerClient } from './indexer/client.js';
+import { parseOpenLicensesOnly } from './license/open.js';
 
 // Deliberate deviation: insufficient scope yields a session built WITHOUT those tools
 // (absent from tools/list; a call returns MCP method-not-found) rather than HTTP 403.
@@ -100,6 +101,7 @@ const CALENDAR_AUTHOR_SETS =
   process.env.CALENDAR_AUTHOR_SETS?.split(',').filter(Boolean) || [];
 const SPELL_RELAYS = process.env.SPELL_RELAYS?.split(',').filter(Boolean) || ['wss://relay.edufeed.org'];
 const indexer = IndexerClient.fromEnv(process.env.INDEXER_ENDPOINTS, process.env.INDEXER_API_TOKEN, process.env.INDEXER_API_TOKENS);
+const OPEN_LICENSES_ONLY = parseOpenLicensesOnly(process.env.OPEN_LICENSES_ONLY);
 
 const HTTP_PORT = Number(process.env.HTTP_PORT ?? 3000);
 const HTTP_HOST = process.env.HTTP_HOST ?? '0.0.0.0';
@@ -195,6 +197,7 @@ async function main() {
           defaultsFromConnectorUrl: relays.fromConnectorUrl,
           spellClient,
           indexer: indexer ?? undefined,
+          openLicensesOnly: OPEN_LICENSES_ONLY,
         },
       );
       return { server, dispose };

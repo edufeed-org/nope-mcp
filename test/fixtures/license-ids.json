@@ -1,0 +1,430 @@
+{
+  "description": "Distinct license:id tag values on kind-30142 events, sampled read-only with nak req (newest pages + older jump pages) on 2026-10-02. Used to test isOpenLicense and to derive OPEN_LICENSE_URIS.",
+  "sampledAt": "2026-10-02",
+  "relays": {
+    "wss://amb-relay.edufeed.org": {
+      "eventsSampled": 6767,
+      "withoutLicenseId": 5384
+    },
+    "wss://oersi.edufeed.org": {
+      "eventsSampled": 10977,
+      "withoutLicenseId": 1105
+    },
+    "wss://sodix.edufeed.org": {
+      "eventsSampled": 9727,
+      "withoutLicenseId": 0
+    }
+  },
+  "licenseIds": [
+    {
+      "id": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "count": 5573,
+      "relays": [
+        "wss://amb-relay.edufeed.org",
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "count": 4229,
+      "relays": [
+        "wss://amb-relay.edufeed.org",
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by/4.0/",
+      "count": 3661,
+      "relays": [
+        "wss://amb-relay.edufeed.org",
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
+      "count": 2468,
+      "relays": [
+        "wss://amb-relay.edufeed.org",
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nc/4.0/",
+      "count": 1118,
+      "relays": [
+        "wss://amb-relay.edufeed.org",
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-sa/3.0/",
+      "count": 897,
+      "relays": [
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nc/3.0/",
+      "count": 600,
+      "relays": [
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "count": 527,
+      "relays": [
+        "wss://amb-relay.edufeed.org",
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "http://creativecommons.org/licenses/by-sa/4.0/legalcode.de",
+      "count": 248,
+      "relays": [
+        "wss://amb-relay.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://w3id.org/kim/license/attribution",
+      "count": 243,
+      "relays": [
+        "wss://amb-relay.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nd/4.0/",
+      "count": 210,
+      "relays": [
+        "wss://amb-relay.edufeed.org",
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-sa/3.0/de/",
+      "count": 190,
+      "relays": [
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by/3.0/",
+      "count": 190,
+      "relays": [
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nc-nd/3.0/de/",
+      "count": 124,
+      "relays": [
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "count": 124,
+      "relays": [
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/publicdomain/mark/1.0/",
+      "count": 77,
+      "relays": [
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nc-nd/3.0/",
+      "count": 69,
+      "relays": [
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "http://creativecommons.org/licenses/by/4.0/legalcode.de",
+      "count": 67,
+      "relays": [
+        "wss://amb-relay.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-sa/3.0/us/",
+      "count": 58,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "http://creativecommons.org/licenses/by-sa/4.0/",
+      "count": 53,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nc-nd/3.0/us/",
+      "count": 27,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "http://creativecommons.org/licenses/by/4.0/",
+      "count": 26,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://de.wikipedia.org/wiki/Urheberrecht_(Deutschland)",
+      "count": 17,
+      "relays": [
+        "wss://amb-relay.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nc-nd/2.5/ch/",
+      "count": 16,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-sa/2.5/",
+      "count": 15,
+      "relays": [
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-sa/3.0/de/deed.de",
+      "count": 15,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nc-nd/3.0/gr/",
+      "count": 14,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by/3.0/de/",
+      "count": 14,
+      "relays": [
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nc-sa/3.0/de/",
+      "count": 13,
+      "relays": [
+        "wss://amb-relay.edufeed.org",
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nd/3.0/de/",
+      "count": 13,
+      "relays": [
+        "wss://oersi.edufeed.org",
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://www.apache.org/licenses/LICENSE-2.0",
+      "count": 10,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "http://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.de",
+      "count": 9,
+      "relays": [
+        "wss://amb-relay.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by/4.0/deed.de",
+      "count": 9,
+      "relays": [
+        "wss://amb-relay.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nc-sa/2.5/",
+      "count": 7,
+      "relays": [
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nc-sa/3.0/gr/",
+      "count": 7,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nc/3.0/de/",
+      "count": 5,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "http://creativecommons.org/licenses/by-nc-nd/4.0/legalcode.de",
+      "count": 4,
+      "relays": [
+        "wss://amb-relay.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nc-sa/2.0/",
+      "count": 4,
+      "relays": [
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-sa/2.0/",
+      "count": 4,
+      "relays": [
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "http://creativecommons.org/licenses/by-nc-nd/3.0/es/",
+      "count": 3,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "http://creativecommons.org/licenses/by-nc-nd/3.0/us/",
+      "count": 3,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by/2.0/",
+      "count": 3,
+      "relays": [
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "http://creativecommons.org/licenses/by-nd/4.0/legalcode.de",
+      "count": 2,
+      "relays": [
+        "wss://amb-relay.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nd/3.0/",
+      "count": 2,
+      "relays": [
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-sa/2.0/de/",
+      "count": 2,
+      "relays": [
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by/2.5/",
+      "count": 2,
+      "relays": [
+        "wss://sodix.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://www.gnu.org/licenses/gpl-3.0",
+      "count": 2,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "http://creativecommons.org/licences/by-nc-nd/4.0",
+      "count": 1,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "count": 1,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "http://creativecommons.org/licenses/by-nc/4.0/legalcode.de",
+      "count": 1,
+      "relays": [
+        "wss://amb-relay.edufeed.org"
+      ]
+    },
+    {
+      "id": "http://creativecommons.org/licenses/by-nd/3.0/",
+      "count": 1,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "http://creativecommons.org/licenses/by-nd/3.0/us/",
+      "count": 1,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-nc-sa/3.0/us/",
+      "count": 1,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://creativecommons.org/licenses/by-sa/4.0/deed.de",
+      "count": 1,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://www.gnu.org/licenses/gpl-3.0-standalone.html",
+      "count": 1,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    }
+  ]
+}

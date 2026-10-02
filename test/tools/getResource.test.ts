@@ -116,3 +116,34 @@ describe('runGetResource kind dispatch', () => {
     expect(calls).toEqual(['getById']);
   });
 });
+
+describe('runGetResource openLicense flag', () => {
+  const author = 'a'.repeat(64);
+  const resource = (license?: string) => ({
+    id: 'e'.repeat(64), pubkey: author, created_at: 1, kind: 30142, sig: 's', content: '',
+    tags: [['d', 'r1'], ['name', 'Arbeitsblatt'], ...(license ? [['license:id', license]] : [])],
+  });
+
+  it('marks an openly licensed resource', async () => {
+    const out = await runGetResource(fakeGetClient(resource('https://creativecommons.org/licenses/by-sa/4.0/')), { identifier: 'r1' });
+    expect(out.openLicense).toBe(true);
+    expect(out.resource).toBeTruthy();
+  });
+
+  it('still returns a non-open or unlicensed resource, flagged false', async () => {
+    const nc = await runGetResource(fakeGetClient(resource('https://creativecommons.org/licenses/by-nc/4.0/')), { eventId: 'x' });
+    expect(nc.resource).toBeTruthy();
+    expect(nc.openLicense).toBe(false);
+    const none = await runGetResource(
+      fakeGetClient(resource()),
+      { naddr: nip19.naddrEncode({ kind: 30142, pubkey: author, identifier: 'r1', relays: [] }) }
+    );
+    expect(none.resource).toBeTruthy();
+    expect(none.openLicense).toBe(false);
+  });
+
+  it('leaves non-resource kinds and misses without the flag', async () => {
+    const miss = await runGetResource(fakeGetClient(null), { identifier: 'r1' });
+    expect(miss).not.toHaveProperty('openLicense');
+  });
+});

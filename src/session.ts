@@ -30,6 +30,7 @@ export function buildSessionServer(
     defaultsFromConnectorUrl?: boolean;
     spellClient?: AMBRelayClient;
     indexer?: IndexerClient;
+    openLicensesOnly?: boolean;
   },
 ): SessionServer {
   const server = new McpServer(
@@ -46,6 +47,7 @@ export function buildSessionServer(
     defaultsFromConnectorUrl: options?.defaultsFromConnectorUrl,
     spellClient: options?.spellClient,
     indexer: options?.indexer,
+    openLicensesOnly: options?.openLicensesOnly,
   });
   registerResources(server, ambClient);
 

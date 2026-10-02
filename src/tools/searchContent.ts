@@ -9,18 +9,32 @@ import { transformContentEvent } from '../content/transform.js';
 import { parseSnippets, attachSnippets, SNIPPET_KIND } from '../content/snippet.js';
 import type { SimplifiedContentResult } from '../content/types.js';
 import { READ_ONLY } from './annotations.js';
+import { eventHasOpenLicense } from '../license/open.js';
+
+/**
+ * Open-licenses-only over-fetch: the license filter runs client-side (a
+ * relay field filter would disable chunk rerank and its passages, and only
+ * kind 30142 carries a license), so ask for this many times `limit` and trim.
+ */
+export const CONTENT_LICENSE_OVERFETCH_FACTOR = 3;
+const RELAY_MAX_LIMIT = 250;
 
 /**
  * Run a cross-content search: one relay-ranked REQ over the selected content
  * kinds (+ 21142), partition out the snippet events, transform the content
  * events in arrival order, and attach each matched passage to its parent.
+ * With openLicensesOnly, learning resources (30142) without an open license
+ * are dropped; every other kind passes unfiltered.
  */
 export async function runContentSearch(
   client: Pick<AMBRelayClient, 'queryEvents'>,
-  params: ContentSearchParams & { language?: string; relays?: string[] }
+  params: ContentSearchParams & { language?: string; relays?: string[]; openLicensesOnly?: boolean }
 ): Promise<{ total: number; results: SimplifiedContentResult[]; relaysIncomplete?: string[]; warning?: string }> {
   const language = params.language ?? 'de';
   const filter = buildContentFilter(params);
+  const limit = filter.limit!;
+  const licenseFilter = !!params.openLicensesOnly && !!filter.kinds?.includes(30142);
+  if (licenseFilter) filter.limit = Math.min(limit * CONTENT_LICENSE_OVERFETCH_FACTOR, RELAY_MAX_LIMIT);
   const diag = newRelayDiagnostics();
   const events = await client.queryEvents(filter, params.relays, { diag });
 
@@ -32,7 +46,9 @@ export async function runContentSearch(
   const results: SimplifiedContentResult[] = [];
   const keptEvents = [];
   for (const e of events) {
+    if (licenseFilter && results.length >= limit) break;
     if (e.kind === SNIPPET_KIND) continue;
+    if (licenseFilter && e.kind === 30142 && !eventHasOpenLicense(e)) continue;
     const r = transformContentEvent(e, language);
     if (r) {
       results.push(r);
@@ -48,8 +64,9 @@ export async function runContentSearch(
 export function registerSearchContentTool(
   server: McpServer,
   client: AMBRelayClient,
-  opts?: { passagesAvailable?: boolean }
+  opts?: { passagesAvailable?: boolean; openLicensesOnly?: boolean }
 ): void {
+  const openLicensesOnly = opts?.openLicensesOnly ?? true;
   const intentSentence = opts?.passagesAvailable
     ? 'This is the tool for DISCOVERY intent — the user wants materials to browse ' +
       '("finde/suche/empfiehl Materialien zu X"): present the items. For QUESTION ' +
@@ -69,6 +86,10 @@ export function registerSearchContentTool(
         'wikis (30818), projects (30143), measures (30144), and NKBIP-01 publications (30040 indices + 30041 sections — scientific articles, books). Results are interleaved and ranked by semantic passage match, ' +
         'and each carries the matched passage ("snippet") when available — use it to ' +
         'answer the user, not just list links. ' +
+        (openLicensesOnly
+          ? 'Educational resources are returned only when openly licensed (CC0, Public Domain, ' +
+            'CC BY, CC BY-SA); the other content types carry no license and are all included. '
+          : '') +
         intentSentence +
         'Each result carries eventAuthor (the Nostr signer who uploaded the ' +
         'event — often an aggregator) plus, for resources, creator/publisher ' +
@@ -146,6 +167,7 @@ export function registerSearchContentTool(
         limit: params.limit,
         community: params.community,
         relays: relaysSearched,
+        openLicensesOnly,
       });
       const notSearched = relaysNotSearched(client, relaysSearched);
       return {

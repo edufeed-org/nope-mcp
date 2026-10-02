@@ -7,6 +7,7 @@ import { nip19 } from 'nostr-tools';
 import { eventToAMBResource, toSimplifiedResource } from '../utils/transform.js';
 import { hasContentTransform, transformContentEvent } from '../content/transform.js';
 import { READ_ONLY } from './annotations.js';
+import { eventHasOpenLicense } from '../license/open.js';
 
 /** Decode an naddr into a d-tag + author + kind for getByDTag; null on malformed/non-naddr input. */
 export function naddrToLookup(
@@ -36,7 +37,10 @@ interface GetClient {
   getById(eventId: string, kinds?: number[], relays?: string[]): Promise<NostrEvent | null>;
 }
 
-/** The pre-existing 30142 formatting, byte-identical in behavior. */
+/**
+ * The 30142 formatting. A lookup is never license-filtered (it is an
+ * explicit request), but reports openLicense — whether search would list it.
+ */
 function formatAMB(event: NostrEvent | null, lang: string): Record<string, unknown> {
   if (!event) return { resource: null, message: 'Resource not found' };
   const ambResource = eventToAMBResource(event);
@@ -47,7 +51,7 @@ function formatAMB(event: NostrEvent | null, lang: string): Record<string, unkno
       rawEvent: { id: event.id, pubkey: event.pubkey, created_at: event.created_at },
     };
   }
-  return { resource: toSimplifiedResource(ambResource, lang) };
+  return { resource: toSimplifiedResource(ambResource, lang), openLicense: eventHasOpenLicense(event) };
 }
 
 export async function runGetResource(
@@ -127,7 +131,9 @@ export function registerGetTool(server: McpServer, client: AMBRelayClient): void
         'measures, publications); non-resource kinds return the same shape as their ' +
         'search results. Bare identifier/eventId lookups (no naddr) always resolve the ' +
         'full educational-resource metadata (kind 30142), including creator/publisher ' +
-        'and educational properties. ' +
+        'and educational properties. Lookups are not license-filtered: a learning ' +
+        'resource carries openLicense (true for CC0, Public Domain, CC BY, CC BY-SA — the ' +
+        'resources searches return). ' +
         'When presenting the resource, render a markdown link the user can open: prefer ' +
         'its sourcePage (the original source page); fall back to url (the edufeed viewer) ' +
         'only when sourcePage is absent.',

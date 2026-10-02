@@ -1,7 +1,7 @@
 export const SERVER_NAME = 'nope-mcp';
 export const SERVER_VERSION = '0.3.0';
 
-export const SERVER_INSTRUCTIONS = `This server is the gateway to the AMB educational-metadata relays — a Nostr-based store of learning resources, long-form articles, wiki pages, scientific publications, and calendar events. Use these tools to answer questions about educational content, its authors, and upcoming events; they abstract the Nostr layer, so query them rather than reading the relays directly. Identifiers like naddr, npub, and pubkey are NIP-19/Nostr values these tools return — pass them back as-is rather than constructing them yourself.
+export const SERVER_INSTRUCTIONS = `This server is the gateway to the AMB educational-metadata relays — a Nostr-based store of learning resources, long-form articles, wiki pages, scientific publications, and calendar events. Use these tools to answer questions about educational content, its authors, and upcoming events; they abstract the Nostr layer, so query them rather than reading the relays directly. Identifiers like naddr, npub, and pubkey are NIP-19/Nostr values these tools return — pass them back as-is rather than constructing them yourself. Search results contain only openly licensed learning resources (CC0, Public Domain, CC BY, CC BY-SA); articles, wikis, publications, projects and measures carry no license and are all included.
 
 Two flows cover most questions:
 - By name ("materials or events by Jörg Lohrer"): call resolve_author(name) to turn a person or organisation name into pubkey candidates, then pass the chosen pubkey to search_content (and/or search_calendar_events) as authors:[pubkey].
