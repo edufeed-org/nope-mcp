@@ -16,6 +16,7 @@ import {
   OVERFETCH_FACTOR, LICENSE_OVERFETCH_FACTOR, PASSAGE_ALPHA, selectPassages, isOpenPassageHit,
 } from './passageSelection.js';
 import { READ_ONLY } from './annotations.js';
+import { snippetOnlyReason } from '../server-info.js';
 
 export interface FetchSpellResult {
   event: NostrEvent | null;
@@ -253,8 +254,9 @@ export function registerSearchPassagesTool(
         'phrase the question as a topical statement that names the subject and the target ' +
         'group ("Friedenserziehung in der Grundschule: Einstieg in das Thema Frieden mit ' +
         'Kindern"), not as the user\'s literal sentence ("Wie kann ich …?"). Results are ' +
-        'capped at two passages per document; a passage with only a snippet and no text is ' +
-        'either license-gated or has no fulltext yet — say so instead of guessing. ' +
+        'capped at two passages per document; a passage with only a snippet and no text ' +
+        snippetOnlyReason(openLicensesOnly) +
+        ' — say so instead of guessing. ' +
         (openLicensesOnly
           ? 'Educational-resource passages come only from openly licensed resources (CC0, ' +
             'Public Domain, CC BY, CC BY-SA); other content types are not license-filtered. '
