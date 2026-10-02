@@ -12,6 +12,7 @@ let handle: HttpServerHandle;
 let base: string;
 let sign: (scope: string) => Promise<string>;
 let lastScopes: string[] | undefined;
+let lastQuery: URLSearchParams | undefined;
 
 // Minimal MCP initialize request body (a session is only built for initialize).
 const initBody = JSON.stringify({
@@ -42,8 +43,9 @@ beforeAll(async () => {
     port: 0,
     host: '127.0.0.1',
     auth: { verify, resourceUrl: RESOURCE, issuer: ISSUER, scopes: ['mcp:read', 'mcp:extract'] },
-    buildMcpServer: ({ scopes }) => {
+    buildMcpServer: ({ scopes, query }) => {
       lastScopes = scopes;
+      lastQuery = query;
       return { server: new McpServer({ name: 'test', version: '0' }) };
     },
   });
@@ -127,6 +129,88 @@ describe('HTTP transport OAuth', () => {
     });
     expect(res.status).not.toBe(401);
     expect(lastScopes).toEqual(['mcp:read', 'mcp:extract']);
+  });
+});
+
+describe('shared / and /mcp routes', () => {
+  it('opens a session via POST / whose Mcp-Session-Id also works for GET and DELETE on /mcp', async () => {
+    const res = await fetch(`${base}/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+      body: initBody,
+    });
+    expect(res.status).not.toBe(401);
+    const sessionId = res.headers.get('mcp-session-id');
+    expect(sessionId).toBeTruthy();
+
+    // Accept without text/event-stream gets a fast 406 from the transport
+    // itself (not our 404 "unknown session") — proof the session was found
+    // via the shared map, without opening a long-lived SSE stream.
+    const getRes = await fetch(`${base}/mcp`, {
+      method: 'GET',
+      headers: { 'Mcp-Session-Id': sessionId!, Accept: 'application/json' },
+    });
+    expect(getRes.status).toBe(406);
+
+    const delRes = await fetch(`${base}/mcp`, {
+      method: 'DELETE',
+      headers: { 'Mcp-Session-Id': sessionId! },
+    });
+    expect(delRes.status).not.toBe(404);
+  });
+
+  it('opens a session via POST /mcp whose Mcp-Session-Id also works for GET and DELETE on /', async () => {
+    const res = await fetch(`${base}/mcp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+      body: initBody,
+    });
+    expect(res.status).not.toBe(401);
+    const sessionId = res.headers.get('mcp-session-id');
+    expect(sessionId).toBeTruthy();
+
+    const getRes = await fetch(`${base}/`, {
+      method: 'GET',
+      headers: { 'Mcp-Session-Id': sessionId!, Accept: 'application/json' },
+    });
+    expect(getRes.status).toBe(406);
+
+    const delRes = await fetch(`${base}/`, {
+      method: 'DELETE',
+      headers: { 'Mcp-Session-Id': sessionId! },
+    });
+    expect(delRes.status).not.toBe(404);
+  });
+
+  it('keeps /mcp behaviour unchanged: GET /mcp with no session is a 404, not the info document', async () => {
+    const res = await fetch(`${base}/mcp`, { headers: { Accept: 'text/html' } });
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error.code).toBe(-32001);
+  });
+
+  it('honours ?relays= on / the same way it does on /mcp', async () => {
+    lastQuery = undefined;
+    const res = await fetch(`${base}/?relays=sodix`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: initBody,
+    });
+    expect(res.status).not.toBe(401);
+    expect(lastQuery?.get('relays')).toBe('sodix');
+  });
+
+  it('serves an info document for a plain browser GET / (no session, no event-stream Accept)', async () => {
+    const res = await fetch(`${base}/`, { headers: { Accept: 'text/html,application/xhtml+xml' } });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({
+      name: 'nope-mcp',
+      version: '0.0.0',
+      mcp: `${base}/`,
+      docs: 'https://git.edufeed.org/edufeed/nope-mcp#readme',
+      transport: 'streamable-http',
+    });
   });
 });
 

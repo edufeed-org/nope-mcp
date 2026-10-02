@@ -2,9 +2,15 @@
  * Streamable HTTP transport for nope-mcp (formerly amb-mcp).
  *
  * Mounts `@modelcontextprotocol/sdk`'s StreamableHTTPServerTransport behind
- * an Express app at `/mcp` (POST/GET/DELETE) plus a `/healthz` endpoint.
- * Uses stateful sessions so server-push notifications (e.g. progress from
- * the LLM-backed extract_metadata tool) reach the client over SSE.
+ * an Express app at both `/` and `/mcp` (POST/GET/DELETE, one shared session
+ * map) plus a `/healthz` endpoint. Uses stateful sessions so server-push
+ * notifications (e.g. progress from the LLM-backed extract_metadata tool)
+ * reach the client over SSE.
+ *
+ * A plain browser `GET /` (no `Mcp-Session-Id` header, `Accept` without
+ * `text/event-stream`) gets a small JSON info document instead of the usual
+ * "unknown session" 404 — `GET /mcp` keeps returning that 404 unchanged,
+ * since only `/` doubles as a human-facing landing URL.
  *
  * Authentication: read tools are served anonymously (a tokenless /mcp request
  * gets an mcp:read session). A supplied token is fully validated (bad token →
@@ -83,6 +89,18 @@ export interface HttpServerHandle {
   port: number;
 }
 
+const DOCS_URL = 'https://git.edufeed.org/edufeed/nope-mcp#readme';
+
+/** True for a plain browser-style GET /: no session, not asking for an SSE stream. */
+function isInfoDocumentRequest(req: Request): boolean {
+  if (req.path !== '/') return false;
+  const sid = req.headers['mcp-session-id'];
+  if (typeof sid === 'string' && sid.length > 0) return false;
+  const accept = req.headers.accept;
+  if (typeof accept === 'string' && accept.includes('text/event-stream')) return false;
+  return true;
+}
+
 export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServerHandle> {
   const {
     port,
@@ -159,7 +177,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
 
   const transports = new Map<string, StreamableHTTPServerTransport>();
 
-  app.post('/mcp', authMiddleware, async (req, res) => {
+  app.post(['/', '/mcp'], authMiddleware, async (req, res) => {
     const sid = req.headers['mcp-session-id'];
     const sessionId = typeof sid === 'string' ? sid : undefined;
 
@@ -242,8 +260,22 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
     await transport.handleRequest(req, res);
   };
 
-  app.get('/mcp', authMiddleware, sessionRequestHandler);
-  app.delete('/mcp', authMiddleware, sessionRequestHandler);
+  const getRequestHandler = async (req: Request, res: Response) => {
+    if (isInfoDocumentRequest(req)) {
+      res.json({
+        name: serverName,
+        version: serverVersion,
+        mcp: `${req.protocol}://${req.get('host')}/`,
+        docs: DOCS_URL,
+        transport: 'streamable-http',
+      });
+      return;
+    }
+    await sessionRequestHandler(req, res);
+  };
+
+  app.get(['/', '/mcp'], authMiddleware, getRequestHandler);
+  app.delete(['/', '/mcp'], authMiddleware, sessionRequestHandler);
 
   const server: Server = await new Promise((resolve) => {
     const s = app.listen(port, host, () => resolve(s));
