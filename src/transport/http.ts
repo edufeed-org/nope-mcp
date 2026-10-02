@@ -1,5 +1,5 @@
 /**
- * Streamable HTTP transport for the AMB MCP server.
+ * Streamable HTTP transport for nope-mcp (formerly amb-mcp).
  *
  * Mounts `@modelcontextprotocol/sdk`'s StreamableHTTPServerTransport behind
  * an Express app at `/mcp` (POST/GET/DELETE) plus a `/healthz` endpoint.
@@ -90,7 +90,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
     allowedHosts,
     allowedOrigins,
     buildMcpServer,
-    serverName = 'amb-mcp',
+    serverName = 'nope-mcp',
     serverVersion = '0.0.0',
   } = opts;
 
@@ -128,7 +128,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
   // WWW-Authenticate challenge value for 401 responses.
   const challenge = opts.auth
     ? `Bearer resource_metadata="${opts.auth.resourceUrl.replace(/\/mcp$/, '')}/.well-known/oauth-protected-resource"`
-    : 'Bearer realm="amb-mcp"';
+    : 'Bearer realm="nope-mcp"';
 
   // JWT middleware applied to /mcp routes.
   const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {

@@ -28,11 +28,11 @@ services:
     environment:
       - NAME=AMB Relay (MCP Test)
       - PUBKEY=1c5ff3caacd842c01dca8f378231b16617516d214da75c7aeabbe9e1efe9c0f6
-      - DESCRIPTION=Local test relay for amb-mcp development
+      - DESCRIPTION=Local test relay for nope-mcp development
       - ICON=
       - TS_APIKEY=xyz
       - TS_HOST=http://typesense:8108
-      - TS_COLLECTION=amb-mcp-test
+      - TS_COLLECTION=nope-mcp-test
       - EMBED_ENDPOINT=https://embed.edufeed.org/embed
       - EMBED_TOKEN=${EMBED_TOKEN}
       - SEMANTIC_SEARCH_ENABLED=true

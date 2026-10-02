@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * AMB Relay MCP Server
+ * nope-mcp (formerly amb-mcp) - Nostr/ContextVM Transport
  *
  * A ContextVM-compliant MCP server for querying AMB (Educational Metadata)
  * resources from a Nostr relay.
@@ -43,7 +43,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('Starting AMB Relay MCP Server...');
+  console.log('Starting nope-mcp...');
   console.log(`AMB Relays: ${AMB_RELAYS.join(', ')}`);
   if (AMB_EXTRA_RELAYS.length) console.log(`AMB Extra Relays: ${AMB_EXTRA_RELAYS.join(', ')}`);
   console.log(`Calendar Relays: ${CALENDAR_RELAYS.join(', ')}`);
@@ -106,7 +106,7 @@ async function main() {
     signer,
     relayHandler: relayPool,
     serverInfo: {
-      name: 'AMB Relay MCP',
+      name: 'nope-mcp',
       about: 'Query educational resources (AMB metadata) from Nostr relays. Supports full-text search and filtering by subject, resource type, educational level, and more.',
     },
     isPublicServer: false,
@@ -116,7 +116,7 @@ async function main() {
 
   // Connect and run
   await server.connect(transport);
-  console.log('✓ AMB MCP Server running');
+  console.log('✓ nope-mcp running');
   console.log('');
   console.log('Available tools:');
   console.log('  - search_resources: Search for educational resources');

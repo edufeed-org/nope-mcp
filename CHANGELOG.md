@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to amb-mcp are documented here. The format follows
+All notable changes to nope-mcp (formerly amb-mcp) are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [SemVer](https://semver.org/) (0.x — the API may still change between minors).
 
@@ -32,6 +32,11 @@ All notable changes to amb-mcp are documented here. The format follows
 
 ### Changed
 
+- **Renamed to `nope-mcp`** (formerly `amb-mcp`). The package name, MCP
+  server name, HTTP `WWW-Authenticate` realm, and docs now say `nope-mcp`.
+  `amb-mcp` remains a documented alias and a valid OAuth audience; existing
+  deployments and URLs (`https://mcp.amb.edufeed.org/mcp`) keep working
+  unchanged.
 - **`search_passages` ranking:** requests vector weight `alpha: 0.7` from the
   indexer instead of its keyword-leaning default 0.3, over-fetches
   `min(limit × 3, 100)` chunks, keeps at most two passages per document and

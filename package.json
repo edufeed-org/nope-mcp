@@ -1,7 +1,7 @@
 {
-  "name": "amb-mcp",
+  "name": "nope-mcp",
   "version": "0.3.0",
-  "description": "ContextVM MCP server for querying AMB educational metadata from Nostr relays",
+  "description": "ContextVM MCP server for querying AMB educational metadata from Nostr relays (formerly amb-mcp)",
   "license": "Unlicense",
   "type": "module",
   "main": "dist/index.js",

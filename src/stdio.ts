@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * AMB Relay MCP Server - Stdio Transport
+ * nope-mcp (formerly amb-mcp) - Stdio Transport
  *
  * This entry point is designed for use with `cvmi serve` or direct stdio MCP clients.
  * All logging goes to stderr to keep stdout clean for JSON-RPC.
@@ -27,7 +27,7 @@ const indexer = IndexerClient.fromEnv(process.env.INDEXER_ENDPOINTS, process.env
 
 async function main() {
   // All logs to stderr to not interfere with stdio protocol
-  console.error('Starting AMB Relay MCP Server (stdio mode)...');
+  console.error('Starting nope-mcp (stdio mode)...');
   console.error(`AMB Relays: ${AMB_RELAYS.join(', ')}`);
   if (AMB_EXTRA_RELAYS.length) console.error(`AMB Extra Relays: ${AMB_EXTRA_RELAYS.join(', ')}`);
   console.error(`Calendar Relays: ${CALENDAR_RELAYS.join(', ')}`);
@@ -83,7 +83,7 @@ async function main() {
 
   // Connect and run
   await server.connect(transport);
-  console.error('AMB MCP Server running (stdio)');
+  console.error('nope-mcp running (stdio)');
 
   // Handle shutdown
   process.on('SIGINT', async () => {

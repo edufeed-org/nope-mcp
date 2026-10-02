@@ -109,6 +109,8 @@ describe('HTTP transport OAuth', () => {
   it('keeps /healthz open', async () => {
     const res = await fetch(`${base}/healthz`);
     expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.name).toBe('nope-mcp');
   });
 
   it('grants mcp:extract to a session initialized with an extract-scoped token', async () => {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * AMB Relay MCP Server - Streamable HTTP Transport
+ * nope-mcp (formerly amb-mcp) - Streamable HTTP Transport
  *
  * Third entry point alongside `src/index.ts` (Nostr/ContextVM) and
  * `src/stdio.ts` (stdio). Mounts MCP at `/mcp` so web-based MCP clients
@@ -113,7 +113,7 @@ const HTTP_ALLOWED_HOSTS = process.env.HTTP_ALLOWED_HOSTS?.split(',').map((s) =>
 const HTTP_ALLOWED_ORIGINS = process.env.HTTP_ALLOWED_ORIGINS?.split(',').map((s) => s.trim()).filter(Boolean);
 
 async function main() {
-  console.log('Starting AMB Relay MCP Server (HTTP mode)...');
+  console.log('Starting nope-mcp (HTTP mode)...');
   console.log(`AMB Relays: ${AMB_RELAYS.join(', ')}`);
   if (AMB_EXTRA_RELAYS.length) console.log(`AMB Extra Relays: ${AMB_EXTRA_RELAYS.join(', ')}`);
   console.log(`Calendar Relays: ${CALENDAR_RELAYS.join(', ')}`);
@@ -194,7 +194,7 @@ async function main() {
     },
   });
 
-  console.log(`✓ AMB MCP Server listening at http://${HTTP_HOST}:${HTTP_PORT}/mcp`);
+  console.log(`✓ nope-mcp listening at http://${HTTP_HOST}:${HTTP_PORT}/mcp`);
   console.log(`  Health: http://${HTTP_HOST}:${HTTP_PORT}/healthz`);
   console.log('Press Ctrl+C to stop');
 

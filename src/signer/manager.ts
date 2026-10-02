@@ -209,7 +209,7 @@ export class SignerManager {
       clientPubkey,
       relays,
       secret,
-      name: opts?.name || 'AMB MCP Server',
+      name: opts?.name || 'nope-mcp',
       permissions: opts?.permissions || ['sign_event'],
     });
 

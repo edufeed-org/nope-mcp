@@ -1,4 +1,4 @@
-# AMB Relay MCP Server
+# nope-mcp (formerly amb-mcp)
 
 An MCP (Model Context Protocol) server for querying educational resources from AMB (Allgemeines Metadatenprofil für Bildungsressourcen) Nostr relays.
 
@@ -10,7 +10,7 @@ The canonical repository lives on Nostr ([NIP-34](https://github.com/nostr-proto
 git clone nostr://laoc.xyz/relay.ngit.dev/amb-mcp
 ```
 
-Mirrors: [git.edufeed.org/edufeed/amb-mcp](https://git.edufeed.org/edufeed/amb-mcp) · [github.com/edufeed-org/amb-mcp](https://github.com/edufeed-org/amb-mcp). Issues and PRs are welcome on any of the three — Nostr PRs arrive as `pr/*` branches.
+Mirrors: [git.edufeed.org/edufeed/nope-mcp](https://git.edufeed.org/edufeed/nope-mcp) · [github.com/edufeed-org/nope-mcp](https://github.com/edufeed-org/nope-mcp). Issues and PRs are welcome on any of the three — Nostr PRs arrive as `pr/*` branches.
 
 Releases are tagged (`v0.1.0`, …) and listed in [CHANGELOG.md](CHANGELOG.md).
 
@@ -31,7 +31,7 @@ Releases are tagged (`v0.1.0`, …) and listed in [CHANGELOG.md](CHANGELOG.md).
 
 ### URL → Form-Prefill Metadata
 - `extract_metadata(url, variant, skosSchemes?)` — fetch a public web page and produce a complete AMB/EKW form-prefill payload. Returns OpenGraph fallback by default; with `ANTHROPIC_API_KEY` set, an LLM grounded in the configured SKOS vocabularies fills SKOS-typed fields with concept IDs and per-field evidence quotes.
-- Library export: `import { extractMetadata } from 'amb-mcp/lib'` for direct in-process use (e.g. SvelteKit server routes).
+- Library export: `import { extractMetadata } from 'nope-mcp/lib'` for direct in-process use (e.g. SvelteKit server routes).
 
 ### Signing & Publishing
 - NIP-46 remote signing (bunker) with QR code connection flow
@@ -85,7 +85,7 @@ cp .env.example .env
 ### Option 1: Add to Claude Code (Recommended)
 
 ```bash
-claude mcp add amb-relay -- bun run /path/to/amb-mcp/src/stdio.ts
+claude mcp add nope-mcp -- bun run /path/to/nope-mcp/src/stdio.ts
 ```
 
 This uses the default public relay (`wss://relay.edufeed.org`). To point at another relay — e.g. the local docker relay from [Development](#test-against-local-relay) — add `-e AMB_RELAYS=ws://localhost:3337`.
@@ -175,9 +175,11 @@ fields: a name and a URL. So the URL is where a connection states which relays
 it wants searched by default:
 
 ```
-https://mcp.amb.edufeed.org/mcp?relays=sodix
-https://mcp.amb.edufeed.org/mcp?relays=amb-relay,sodix,oersi
+https://mcp.edufeed.org/mcp?relays=sodix
+https://mcp.edufeed.org/mcp?relays=amb-relay,sodix,oersi
 ```
+
+(The previous host, `https://mcp.amb.edufeed.org/mcp`, keeps working unchanged — both accept the same `?relays=` syntax.)
 
 The relays named in `?relays=` become that session's **default** set — searched
 on every `search_content` / `search_resources` call. Every other relay the
@@ -213,8 +215,11 @@ standard one.
 A managed instance is hosted at:
 
 ```
-https://mcp.amb.edufeed.org/mcp
+https://mcp.edufeed.org/mcp
 ```
+
+The previous URL, `https://mcp.amb.edufeed.org/mcp`, remains valid and serves
+the same deployment.
 
 It serves three relays — `amb-relay` (`wss://amb-relay.edufeed.org`, the
 default), plus `oersi` and `sodix` as per-call extras — so
@@ -461,7 +466,7 @@ Fetch one or more public web pages (or PDFs) and produce an AMB/EKW form-prefill
 payload. Returns OpenGraph/JSON-LD fallback by default; with `ANTHROPIC_API_KEY`
 set, an LLM grounded in the configured SKOS vocabularies fills SKOS-typed fields
 with concept IDs and per-field evidence quotes. Also available as a library
-export: `import { extractMetadata } from 'amb-mcp/lib'`.
+export: `import { extractMetadata } from 'nope-mcp/lib'`.
 
 Parameters:
 | Name | Type | Description |
