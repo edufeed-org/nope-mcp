@@ -262,6 +262,65 @@ describe('host-aware OAuth metadata (RFC 9728)', () => {
     );
   });
 
+  describe('malformed forwarded headers', () => {
+    const FALLBACK_CHALLENGE =
+      'Bearer resource_metadata="https://mcp.amb.edufeed.org/.well-known/oauth-protected-resource/mcp"';
+
+    const badTokenPost = (headers: Record<string, string>) =>
+      fetch(`${base}/mcp`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json', Authorization: 'Bearer x' },
+        body: '{}',
+      });
+
+    const stillAlive = async () => {
+      const res = await fetch(`${base}/healthz`);
+      expect(res.status).toBe(200);
+    };
+
+    it('answers a malformed X-Forwarded-Proto with the fallback challenge and keeps running', async () => {
+      const res = await badTokenPost({ 'X-Forwarded-Proto': 'a b', 'X-Forwarded-Host': 'mcp.edufeed.org' });
+      expect(res.status).toBe(401);
+      expect(res.headers.get('www-authenticate')).toBe(FALLBACK_CHALLENGE);
+      await stillAlive();
+    });
+
+    it('rejects a non-http(s) X-Forwarded-Proto', async () => {
+      const res = await badTokenPost({ 'X-Forwarded-Proto': 'javascript', 'X-Forwarded-Host': 'mcp.edufeed.org' });
+      expect(res.headers.get('www-authenticate')).toBe(FALLBACK_CHALLENGE);
+    });
+
+    it.each([
+      ['a space', 'mcp edufeed.org'],
+      ['a quote', 'evil"example.org'],
+      ['a path', 'evil.example/x'],
+      ['userinfo', 'user@evil.example'],
+    ])('answers an X-Forwarded-Host with %s with the fallback challenge and keeps running', async (_label, host) => {
+      const res = await badTokenPost({ 'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': host });
+      expect(res.status).toBe(401);
+      const challenge = res.headers.get('www-authenticate')!;
+      expect(challenge).toBe(FALLBACK_CHALLENGE);
+      // Exactly the two quotes delimiting the parameter value.
+      expect(challenge.split('"')).toHaveLength(3);
+      await stillAlive();
+    });
+
+    it('serves the fallback PRM for a malformed forwarded host', async () => {
+      const res = await fetch(`${base}/.well-known/oauth-protected-resource/mcp`, {
+        headers: { 'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': 'evil"example.org' },
+      });
+      expect((await res.json()).resource).toBe(RESOURCE);
+    });
+
+    it('never renders an undefined host in the info document', async () => {
+      const res = await fetch(`${base}/`, {
+        headers: { Accept: 'text/html', 'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': 'bad host' },
+      });
+      const body = await res.json();
+      expect(body.mcp).toBe('https://mcp.amb.edufeed.org/');
+    });
+  });
+
   describe('with HTTP_ALLOWED_HOSTS configured', () => {
     let restricted: HttpServerHandle;
     let restrictedBase: string;
@@ -286,6 +345,11 @@ describe('host-aware OAuth metadata (RFC 9728)', () => {
 
     it('uses the requested host when it is allowed', async () => {
       const res = await fetch(`${restrictedBase}/.well-known/oauth-protected-resource`, { headers: viaTraefik('mcp.edufeed.org') });
+      expect((await res.json()).resource).toBe('https://mcp.edufeed.org/');
+    });
+
+    it('matches allowed hosts case-insensitively', async () => {
+      const res = await fetch(`${restrictedBase}/.well-known/oauth-protected-resource`, { headers: viaTraefik('MCP.Edufeed.ORG') });
       expect((await res.json()).resource).toBe('https://mcp.edufeed.org/');
     });
 

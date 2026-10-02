@@ -120,8 +120,30 @@ function requestHost(req: Request): string | undefined {
 }
 
 function isHostAllowed(host: string, allowedHosts: string[]): boolean {
-  const hostname = host.replace(/:\d+$/, '');
-  return allowedHosts.includes(host) || allowedHosts.includes(hostname);
+  const wanted = host.toLowerCase();
+  const hostname = wanted.replace(/:\d+$/, '');
+  return allowedHosts.some((h) => {
+    const allowed = h.toLowerCase();
+    return allowed === wanted || allowed === hostname;
+  });
+}
+
+// A DNS name or bracketed IPv6 literal, with an optional port — nothing that
+// could smuggle a path, userinfo, quote or whitespace into an advertised URL.
+const SAFE_HOST = /^(?:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?|\[[0-9a-f:.]+\])(?::\d{1,5})?$/i;
+
+/**
+ * `<proto>://<host>` from client-controlled (forwarded) values, or undefined
+ * when either is unusable. Never throws.
+ */
+function safeOrigin(proto: string, host: string | undefined): string | undefined {
+  if (proto !== 'http' && proto !== 'https') return undefined;
+  if (!host || !SAFE_HOST.test(host)) return undefined;
+  try {
+    return new URL(`${proto}://${host}`).origin;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServerHandle> {
@@ -158,12 +180,25 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
     });
   });
 
+  /** Root URL shown in the info document when the request's own is unusable. */
+  const infoFallbackUrl = (): string => {
+    try {
+      if (opts.auth) return new URL('/', opts.auth.resourceUrl).href;
+    } catch {
+      // fall through to the bind address
+    }
+    return `http://${host}:${port}/`;
+  };
+
   /** The protected resource URL for `path` as addressed by this request. */
+  // Client-controlled headers feed this, so anything malformed or not on
+  // the allow-list yields the fallback instead of an attacker-chosen URL.
   const resourceFor = (req: Request, path: '/' | '/mcp', fallback: string): string => {
     const host = requestHost(req);
-    if (!host) return fallback;
+    const origin = safeOrigin(req.protocol, host);
+    if (!origin || !host) return fallback;
     if (allowedHosts && allowedHosts.length > 0 && !isHostAllowed(host, allowedHosts)) return fallback;
-    return `${req.protocol}://${host}${path}`;
+    return `${origin}${path}`;
   };
 
   // PRM documents served unauthenticated (RFC 9728), one per MCP path.
@@ -187,7 +222,13 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
     if (!opts.auth) return 'Bearer realm="nope-mcp"';
     const path = req.path === '/mcp' ? '/mcp' : '/';
     const resource = resourceFor(req, path, opts.auth.resourceUrl);
-    return `Bearer resource_metadata="${protectedResourceMetadataUrl(resource)}"`;
+    try {
+      return `Bearer resource_metadata="${protectedResourceMetadataUrl(resource)}"`;
+    } catch {
+      // Only reachable with a malformed configured resourceUrl; this runs in
+      // the auth middleware's error path, where a throw would crash Node.
+      return 'Bearer realm="nope-mcp"';
+    }
   };
 
   // JWT middleware applied to /mcp routes.
@@ -307,7 +348,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
       res.json({
         name: serverName,
         version: serverVersion,
-        mcp: `${req.protocol}://${requestHost(req)}/`,
+        mcp: resourceFor(req, '/', infoFallbackUrl()),
         docs: DOCS_URL,
         transport: 'streamable-http',
       });
