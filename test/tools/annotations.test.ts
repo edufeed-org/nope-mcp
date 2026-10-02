@@ -99,4 +99,16 @@ describe('tool annotations', () => {
     session.dispose();
     spellClient.close();
   });
+
+  it('signer_status is a pure read, not a mutator (checks connection state only)', () => {
+    const { session, registry, spellClient } = fullSession();
+    expect(registry['signer_status'].annotations).toMatchObject({
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    });
+    session.dispose();
+    spellClient.close();
+  });
 });

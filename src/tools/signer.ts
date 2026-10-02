@@ -7,7 +7,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SignerManager } from '../signer/index.js';
-import { SESSION_MUTATOR } from './annotations.js';
+import { READ_ONLY, SESSION_MUTATOR } from './annotations.js';
 
 // Default relays for NIP-46 communication
 const DEFAULT_RELAYS = process.env.AMB_RELAYS?.split(',') || ['wss://relay.edufeed.org'];
@@ -363,7 +363,7 @@ function registerSignerStatusTool(server: McpServer): void {
       title: 'Signer Status',
       description: 'Check the current signer connection status.',
       inputSchema: {},
-      annotations: SESSION_MUTATOR,
+      annotations: READ_ONLY,
     },
     async (_params, extra) => {
       try {

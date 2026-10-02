@@ -4,9 +4,16 @@
  * MCP directories (Claude Connectors Directory, ChatGPT) and clients use
  * these hints to tell a safe, no-prompt read from a tool that mutates
  * session state, publishes to relays, or talks to the open web. Every
- * `registerTool` call in `src/tools/` should pass one of these — see
- * `.superpowers/sdd/2026-10-02-nope-mcp-agent-ready/task-4-brief.md` for the
- * classification rules.
+ * `registerTool` call in `src/tools/` should pass one of these.
+ *
+ * Classification rule: start from `readOnlyHint` — does the handler ever
+ * write anything, anywhere? If not, it's a read (`READ_ONLY`, or
+ * `READ_OPEN_WORLD` when it fetches arbitrary external URLs rather than a
+ * closed set of relays). If it does write, ask where: only to this
+ * session's in-memory state (`SESSION_MUTATOR`, or `SESSION_DESTRUCTIVE`
+ * when that write irreversibly discards data) or out to the relay network
+ * (`PUBLISHER`, i.e. open-world). Judge every tool by what its handler
+ * actually does, not by its name.
  */
 
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
