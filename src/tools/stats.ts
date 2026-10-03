@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AMBRelayClient } from '../relay/client.js';
+import { READ_ONLY } from './annotations.js';
 
 /**
  * NIP-11 stats for every selectable relay, each marked as default or extra so
@@ -53,6 +54,7 @@ export function registerStatsTool(
       description:
         'Get information about all selectable AMB relays (default and extra), including supported NIPs, relay name, and description.',
       inputSchema: {},
+      annotations: READ_ONLY,
     },
     async () => {
       try {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { nip19 } from 'nostr-tools';
 import { naddrToLookup, runGetResource } from '../../src/tools/get.js';
+import { buildSessionServer } from '../../src/session.js';
 
 function pk(n: number): string {
   return n.toString(16).padStart(64, '0');
@@ -114,5 +115,61 @@ describe('runGetResource kind dispatch', () => {
     const naddr = nip19.naddrEncode({ kind: 30040, pubkey: author, identifier: 'x', relays: [] });
     await runGetResource(client, { eventId: 'byid', naddr });
     expect(calls).toEqual(['getById']);
+  });
+});
+
+describe('runGetResource openLicense flag', () => {
+  const author = 'a'.repeat(64);
+  const resource = (license?: string) => ({
+    id: 'e'.repeat(64), pubkey: author, created_at: 1, kind: 30142, sig: 's', content: '',
+    tags: [['d', 'r1'], ['name', 'Arbeitsblatt'], ...(license ? [['license:id', license]] : [])],
+  });
+
+  it('marks an openly licensed resource', async () => {
+    const out = await runGetResource(fakeGetClient(resource('https://creativecommons.org/licenses/by-sa/4.0/')), { identifier: 'r1' });
+    expect(out.openLicense).toBe(true);
+    expect(out.resource).toBeTruthy();
+  });
+
+  it('still returns a non-open or unlicensed resource, flagged false', async () => {
+    const nc = await runGetResource(fakeGetClient(resource('https://creativecommons.org/licenses/by-nc/4.0/')), { eventId: 'x' });
+    expect(nc.resource).toBeTruthy();
+    expect(nc.openLicense).toBe(false);
+    const none = await runGetResource(
+      fakeGetClient(resource()),
+      { naddr: nip19.naddrEncode({ kind: 30142, pubkey: author, identifier: 'r1', relays: [] }) }
+    );
+    expect(none.resource).toBeTruthy();
+    expect(none.openLicense).toBe(false);
+  });
+
+  it('leaves non-resource kinds and misses without the flag', async () => {
+    const miss = await runGetResource(fakeGetClient(null), { identifier: 'r1' });
+    expect(miss).not.toHaveProperty('openLicense');
+  });
+});
+
+function getResourceDescription(openLicensesOnly: boolean): string {
+  const session = buildSessionServer(['wss://relay.edufeed.org'], ['wss://relay.edufeed.org'], undefined, {
+    openLicensesOnly,
+  });
+  const registry = (
+    session.server as unknown as { _registeredTools: Record<string, { description?: string }> }
+  )._registeredTools;
+  const description = registry['get_resource'].description ?? '';
+  session.dispose();
+  return description;
+}
+
+describe('get_resource tool description matches the OPEN_LICENSES_ONLY setting', () => {
+  it('says search is limited to open licenses when the setting is on', () => {
+    const description = getResourceDescription(true);
+    expect(description).toMatch(/the open licenses that search results are currently limited to/);
+  });
+
+  it('says license filtering is off, instead of claiming search is open-only', () => {
+    const description = getResourceDescription(false);
+    expect(description).not.toMatch(/currently limited to/);
+    expect(description).toMatch(/license filtering is currently off/);
   });
 });

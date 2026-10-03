@@ -4,7 +4,7 @@ import { AMBRelayClient } from './relay/client.js';
 import { registerTools } from './tools/index.js';
 import { instrumentToolLogging } from './tools/logging.js';
 import { registerResources } from './resources/index.js';
-import { SERVER_NAME, SERVER_VERSION, SERVER_INSTRUCTIONS } from './server-info.js';
+import { SERVER_NAME, SERVER_VERSION, buildServerInstructions } from './server-info.js';
 import type { IndexerClient } from './indexer/client.js';
 
 export interface SessionServer {
@@ -30,11 +30,13 @@ export function buildSessionServer(
     defaultsFromConnectorUrl?: boolean;
     spellClient?: AMBRelayClient;
     indexer?: IndexerClient;
+    openLicensesOnly?: boolean;
   },
 ): SessionServer {
+  const openLicensesOnly = options?.openLicensesOnly ?? true;
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { instructions: SERVER_INSTRUCTIONS },
+    { instructions: buildServerInstructions({ openLicensesOnly }) },
   );
   // Before registerTools: the patch only sees tools registered after it.
   instrumentToolLogging(server);
@@ -46,6 +48,7 @@ export function buildSessionServer(
     defaultsFromConnectorUrl: options?.defaultsFromConnectorUrl,
     spellClient: options?.spellClient,
     indexer: options?.indexer,
+    openLicensesOnly,
   });
   registerResources(server, ambClient);
 

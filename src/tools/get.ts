@@ -6,6 +6,8 @@ import type { NostrEvent } from 'nostr-tools';
 import { nip19 } from 'nostr-tools';
 import { eventToAMBResource, toSimplifiedResource } from '../utils/transform.js';
 import { hasContentTransform, transformContentEvent } from '../content/transform.js';
+import { READ_ONLY } from './annotations.js';
+import { eventHasOpenLicense } from '../license/open.js';
 
 /** Decode an naddr into a d-tag + author + kind for getByDTag; null on malformed/non-naddr input. */
 export function naddrToLookup(
@@ -35,7 +37,10 @@ interface GetClient {
   getById(eventId: string, kinds?: number[], relays?: string[]): Promise<NostrEvent | null>;
 }
 
-/** The pre-existing 30142 formatting, byte-identical in behavior. */
+/**
+ * The 30142 formatting. A lookup is never license-filtered (it is an
+ * explicit request), but reports openLicense — whether search would list it.
+ */
 function formatAMB(event: NostrEvent | null, lang: string): Record<string, unknown> {
   if (!event) return { resource: null, message: 'Resource not found' };
   const ambResource = eventToAMBResource(event);
@@ -46,7 +51,7 @@ function formatAMB(event: NostrEvent | null, lang: string): Record<string, unkno
       rawEvent: { id: event.id, pubkey: event.pubkey, created_at: event.created_at },
     };
   }
-  return { resource: toSimplifiedResource(ambResource, lang) };
+  return { resource: toSimplifiedResource(ambResource, lang), openLicense: eventHasOpenLicense(event) };
 }
 
 export async function runGetResource(
@@ -111,10 +116,26 @@ export async function runGetResource(
   return formatAMB(event, lang);
 }
 
+/** The openLicense sentence, worded to match whether search is currently license-filtered. */
+function openLicenseNote(openLicensesOnly: boolean): string {
+  return openLicensesOnly
+    ? 'Lookups are not license-filtered: a learning resource carries openLicense (true for ' +
+        'CC0, Public Domain, CC BY, CC BY-SA — the open licenses that search results are ' +
+        'currently limited to). '
+    : 'A learning resource carries openLicense (true for CC0, Public Domain, CC BY, CC BY-SA); ' +
+        'license filtering is currently off, so search results may include resources under ' +
+        'other licenses or with no license at all. ';
+}
+
 /**
  * Register the get_resource tool
  */
-export function registerGetTool(server: McpServer, client: AMBRelayClient): void {
+export function registerGetTool(
+  server: McpServer,
+  client: AMBRelayClient,
+  options?: { openLicensesOnly?: boolean }
+): void {
+  const openLicensesOnly = options?.openLicensesOnly ?? true;
   server.registerTool(
     'get_resource',
     {
@@ -127,6 +148,7 @@ export function registerGetTool(server: McpServer, client: AMBRelayClient): void
         'search results. Bare identifier/eventId lookups (no naddr) always resolve the ' +
         'full educational-resource metadata (kind 30142), including creator/publisher ' +
         'and educational properties. ' +
+        openLicenseNote(openLicensesOnly) +
         'When presenting the resource, render a markdown link the user can open: prefer ' +
         'its sourcePage (the original source page); fall back to url (the edufeed viewer) ' +
         'only when sourcePage is absent.',
@@ -161,6 +183,7 @@ export function registerGetTool(server: McpServer, client: AMBRelayClient): void
               'accepted, by full URL or short name (e.g. "oersi"). Default: the default relay set.'
           ),
       },
+      annotations: READ_ONLY,
     },
     async (params) => {
       const selection = resolveRelaysOrError(client, params.relays);

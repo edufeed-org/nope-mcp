@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getAuthorDirectory } from '../authors.js';
+import { READ_ONLY } from './annotations.js';
 
 /**
  * Register the list_known_authors tool
@@ -14,6 +15,7 @@ export function registerAuthorTools(server: McpServer): void {
         'Returns author names, pubkeys, and NIP-05 identifiers. Use the returned pubkeys with ' +
         'search_resources(authors: [...]) to filter resources by author.',
       inputSchema: {},
+      annotations: READ_ONLY,
     },
     async () => {
       const directory = getAuthorDirectory();

@@ -7,6 +7,8 @@ import {
 import { buildFilter, type SearchParams } from '../relay/filters.js';
 import { eventsToAMBResources, toSimplifiedResource, type SimplifiedAMBResource } from '../utils/transform.js';
 import { findActorCandidates, type ActorCandidate } from './resolvePublisher.js';
+import { READ_ONLY } from './annotations.js';
+import { eventHasOpenLicense } from '../license/open.js';
 
 export interface ResourceSearchResult {
   total: number;
@@ -33,12 +35,19 @@ export async function runResourceSearch(
   params: SearchParams,
   relays?: string[]
 ): Promise<ResourceSearchResult> {
-  const { filter, search } = buildFilter(params);
+  const { filter, search, limit } = buildFilter(params);
 
   const diag = newRelayDiagnostics();
-  const events = search
+  const fetched = search
     ? await client.search(search, filter, relays, diag)
     : await client.query(filter, relays, diag);
+  // Open-licenses-only: a free-text search was over-fetched without a relay
+  // license filter (keeps chunk rerank), so this is the filter; a pure
+  // field-filter search carried license.id filters and this is the safety net
+  // for spellings missing from OPEN_LICENSE_URIS. Relay order is preserved.
+  const events = params.openLicensesOnly
+    ? fetched.filter(eventHasOpenLicense).slice(0, limit)
+    : fetched;
 
   const resources = eventsToAMBResources(events);
   const lang = params.language || 'de';
@@ -65,6 +74,11 @@ export async function runResourceSearch(
         `"${actorName}"; no similar actor name was found either. The actor may not exist in ` +
         `this corpus — try resolve_publisher, resolve_author, or a free-text query search.`;
     }
+    if (params.openLicensesOnly) {
+      result.hint +=
+        ' Only openly licensed resources (CC0, Public Domain, CC BY, CC BY-SA) are searched, ' +
+        'so an actor whose resources are all NC/ND or unlicensed returns nothing here.';
+    }
   }
 
   return result;
@@ -73,7 +87,12 @@ export async function runResourceSearch(
 /**
  * Register the search_resources tool
  */
-export function registerSearchTool(server: McpServer, client: AMBRelayClient): void {
+export function registerSearchTool(
+  server: McpServer,
+  client: AMBRelayClient,
+  opts: { openLicensesOnly?: boolean } = {}
+): void {
+  const openLicensesOnly = opts.openLicensesOnly ?? true;
   server.registerTool(
     'search_resources',
     {
@@ -81,7 +100,12 @@ export function registerSearchTool(server: McpServer, client: AMBRelayClient): v
       description:
         'Search for educational resources (learning materials, courses, videos, etc.) using ' +
         'full-text search and metadata filters. Returns resources matching the query from the ' +
-        'AMB relay. NOTE: the metadata filters (publisherName, creatorName, subjectLabel, ' +
+        'AMB relay. ' +
+        (openLicensesOnly
+          ? 'Only openly licensed resources are returned (CC0, Public Domain, CC BY, CC BY-SA); ' +
+            'NC/ND, all-rights-reserved and unlicensed resources are left out. '
+          : '') +
+        'NOTE: the metadata filters (publisherName, creatorName, subjectLabel, ' +
         'resourceTypeLabel, educationalLevelLabel) are EXACT full-string matches against the ' +
         'stored metadata (case-insensitive) — not fuzzy or substring searches. A guessed ' +
         'spelling silently returns 0 results; use resolve_publisher to find the canonical ' +
@@ -161,6 +185,7 @@ export function registerSearchTool(server: McpServer, client: AMBRelayClient): v
               'Default: the default relay set.'
           ),
       },
+      annotations: READ_ONLY,
     },
     async (params) => {
       const selection = resolveRelaysOrError(client, params.relays);
@@ -180,6 +205,7 @@ export function registerSearchTool(server: McpServer, client: AMBRelayClient): v
         until: params.until,
         authors: params.authors,
         limit: params.limit,
+        openLicensesOnly,
       };
 
       const result = await runResourceSearch(client, searchParams, relaysSearched);

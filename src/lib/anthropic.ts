@@ -1,6 +1,6 @@
 /**
  * Tiny factory that constructs an `AnthropicLike` client backed by the real
- * `@anthropic-ai/sdk` package. Exported from `amb-mcp/lib` so consumers don't
+ * `@anthropic-ai/sdk` package. Exported from `nope-mcp/lib` so consumers don't
  * have to depend on the SDK directly — the lib already does.
  */
 

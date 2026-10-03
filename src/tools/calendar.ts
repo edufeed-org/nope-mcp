@@ -5,6 +5,7 @@ import { buildCalendarFilter } from '../calendar/filters.js';
 import { eventsToCalendarEvents } from '../calendar/transform.js';
 import { getCalendarAuthorDirectory } from '../authors.js';
 import { newRelayDiagnostics, relayDiagnosticsFields } from './relaySelection.js';
+import { READ_ONLY } from './annotations.js';
 
 /**
  * Register calendar event tools with the MCP server
@@ -106,6 +107,7 @@ export function registerCalendarTools(
           .default(20)
           .describe('Maximum number of results (1-250, default: 20)'),
       },
+      annotations: READ_ONLY,
     },
     async (params) => {
       const filter = buildCalendarFilter({
@@ -152,6 +154,7 @@ export function registerCalendarTools(
         'Returns author names, pubkeys, and NIP-05 identifiers. Use the returned pubkeys with ' +
         'search_calendar_events(authors: [...]) to filter events by author.',
       inputSchema: {},
+      annotations: READ_ONLY,
     },
     async () => {
       const directory = getCalendarAuthorDirectory();

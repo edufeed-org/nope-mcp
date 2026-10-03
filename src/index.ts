@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * AMB Relay MCP Server
+ * nope-mcp (formerly amb-mcp) - Nostr/ContextVM Transport
  *
  * A ContextVM-compliant MCP server for querying AMB (Educational Metadata)
  * resources from a Nostr relay.
@@ -18,8 +18,9 @@ import { AMBRelayClient } from './relay/client.js';
 import { registerTools } from './tools/index.js';
 import { registerResources } from './resources/index.js';
 import { loadAuthorSets, setAuthorDirectory, setCalendarAuthorDirectory } from './authors.js';
-import { SERVER_NAME, SERVER_VERSION, SERVER_INSTRUCTIONS } from './server-info.js';
+import { SERVER_NAME, SERVER_VERSION, buildServerInstructions } from './server-info.js';
 import { IndexerClient } from './indexer/client.js';
+import { parseOpenLicensesOnly } from './license/open.js';
 
 // Configuration from environment
 const AMB_RELAYS = process.env.AMB_RELAYS?.split(',') || ['wss://relay.edufeed.org'];
@@ -34,6 +35,7 @@ const RELAYS = process.env.RELAYS?.split(',') || [
 ];
 const SPELL_RELAYS = process.env.SPELL_RELAYS?.split(',').filter(Boolean) || ['wss://relay.edufeed.org'];
 const indexer = IndexerClient.fromEnv(process.env.INDEXER_ENDPOINTS, process.env.INDEXER_API_TOKEN, process.env.INDEXER_API_TOKENS);
+const OPEN_LICENSES_ONLY = parseOpenLicensesOnly(process.env.OPEN_LICENSES_ONLY);
 
 async function main() {
   // Validate required configuration
@@ -43,7 +45,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('Starting AMB Relay MCP Server...');
+  console.log('Starting nope-mcp...');
   console.log(`AMB Relays: ${AMB_RELAYS.join(', ')}`);
   if (AMB_EXTRA_RELAYS.length) console.log(`AMB Extra Relays: ${AMB_EXTRA_RELAYS.join(', ')}`);
   console.log(`Calendar Relays: ${CALENDAR_RELAYS.join(', ')}`);
@@ -61,13 +63,14 @@ async function main() {
   // Create MCP server
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { instructions: SERVER_INSTRUCTIONS },
+    { instructions: buildServerInstructions({ openLicensesOnly: OPEN_LICENSES_ONLY }) },
   );
 
   // Register tools and resources
   registerTools(server, ambClient, calendarClient, { read: true, extract: true, write: true }, {
     spellClient,
     indexer: indexer ?? undefined,
+    openLicensesOnly: OPEN_LICENSES_ONLY,
   });
   registerResources(server, ambClient);
 
@@ -106,7 +109,7 @@ async function main() {
     signer,
     relayHandler: relayPool,
     serverInfo: {
-      name: 'AMB Relay MCP',
+      name: 'nope-mcp',
       about: 'Query educational resources (AMB metadata) from Nostr relays. Supports full-text search and filtering by subject, resource type, educational level, and more.',
     },
     isPublicServer: false,
@@ -116,7 +119,7 @@ async function main() {
 
   // Connect and run
   await server.connect(transport);
-  console.log('✓ AMB MCP Server running');
+  console.log('✓ nope-mcp running');
   console.log('');
   console.log('Available tools:');
   console.log('  - search_resources: Search for educational resources');

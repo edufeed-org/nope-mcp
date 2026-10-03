@@ -5,6 +5,7 @@ import { extractMetadata } from '../lib/extractMetadata.js';
 import type { AnthropicLike } from '../lib/llm.js';
 import { extractPdfText } from '../lib/pdfExtractor.js';
 import { VARIANTS } from '../lib/schema.js';
+import { READ_OPEN_WORLD } from './annotations.js';
 
 /** Upper bound on sources per extraction — keeps the combined LLM payload sane. */
 const MAX_SOURCE_URLS = 10;
@@ -73,7 +74,8 @@ export function registerExtractTool(server: McpServer): void {
           .describe(
             'Map of form-field name → SKOS scheme URI. Defaults to the SKOS_SCHEMES env var if absent.'
           )
-      }
+      },
+      annotations: READ_OPEN_WORLD,
     },
     async (params) => {
       const urls = params.urls ?? (params.url ? [params.url] : []);

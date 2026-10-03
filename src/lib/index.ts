@@ -1,5 +1,5 @@
 /**
- * Public library entry — what consumers import as `amb-mcp/lib`.
+ * Public library entry — what consumers import as `nope-mcp/lib`.
  *
  * Used directly by edufeed-app's `/api/enrich` route so the runtime path
  * matches the MCP tool path exactly. No subprocess, no separate code.

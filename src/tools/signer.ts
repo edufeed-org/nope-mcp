@@ -7,6 +7,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SignerManager } from '../signer/index.js';
+import { READ_ONLY, SESSION_MUTATOR } from './annotations.js';
 
 // Default relays for NIP-46 communication
 const DEFAULT_RELAYS = process.env.AMB_RELAYS?.split(',') || ['wss://relay.edufeed.org'];
@@ -70,6 +71,7 @@ function registerSignerInitTool(server: McpServer): void {
           .optional()
           .describe('Requested permissions (e.g., ["sign_event:0", "sign_event:30142"])'),
       },
+      annotations: SESSION_MUTATOR,
     },
     async (params, extra) => {
       try {
@@ -146,6 +148,7 @@ function registerSignerAwaitTool(server: McpServer): void {
           .optional()
           .describe('Timeout in seconds (default: 120)'),
       },
+      annotations: SESSION_MUTATOR,
     },
     async (params, extra) => {
       try {
@@ -219,6 +222,7 @@ function registerSignerConnectTool(server: McpServer): void {
           .optional()
           .describe('Allow insecure connection with private key (required for nsec)'),
       },
+      annotations: SESSION_MUTATOR,
     },
     async (params, extra) => {
       try {
@@ -306,6 +310,7 @@ function registerSignerDisconnectTool(server: McpServer): void {
       title: 'Disconnect Signer',
       description: 'Disconnect the current signer session.',
       inputSchema: {},
+      annotations: SESSION_MUTATOR,
     },
     async (_params, extra) => {
       try {
@@ -358,6 +363,7 @@ function registerSignerStatusTool(server: McpServer): void {
       title: 'Signer Status',
       description: 'Check the current signer connection status.',
       inputSchema: {},
+      annotations: READ_ONLY,
     },
     async (_params, extra) => {
       try {

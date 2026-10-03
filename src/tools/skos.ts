@@ -11,6 +11,7 @@ import {
   type LocalizedString,
   type SearchField,
 } from '../skos/index.js';
+import { READ_ONLY } from './annotations.js';
 
 /**
  * Format a concept for output
@@ -96,6 +97,7 @@ export function registerGetVocabularyTool(server: McpServer): void {
             'If true, return a flat list of concepts instead of hierarchy. Default: false.'
           ),
       }),
+      annotations: READ_ONLY,
     },
     async ({ uri, language, flat }) => {
       try {
@@ -214,6 +216,7 @@ export function registerGetConceptTool(server: McpServer): void {
           .optional()
           .describe('Preferred language for labels (e.g., "de", "en")'),
       }),
+      annotations: READ_ONLY,
     },
     async ({ uri, language }) => {
       try {
@@ -297,6 +300,7 @@ export function registerSearchConceptsTool(server: McpServer): void {
           .optional()
           .describe('Maximum number of results (default: 20, max: 100)'),
       }),
+      annotations: READ_ONLY,
     },
     async ({ vocabularyUri, query, language, fields, limit = 20 }) => {
       try {

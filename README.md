@@ -1,4 +1,4 @@
-# AMB Relay MCP Server
+# nope-mcp (formerly amb-mcp)
 
 An MCP (Model Context Protocol) server for querying educational resources from AMB (Allgemeines Metadatenprofil für Bildungsressourcen) Nostr relays.
 
@@ -10,9 +10,21 @@ The canonical repository lives on Nostr ([NIP-34](https://github.com/nostr-proto
 git clone nostr://laoc.xyz/relay.ngit.dev/amb-mcp
 ```
 
-Mirrors: [git.edufeed.org/edufeed/amb-mcp](https://git.edufeed.org/edufeed/amb-mcp) · [github.com/edufeed-org/amb-mcp](https://github.com/edufeed-org/amb-mcp). Issues and PRs are welcome on any of the three — Nostr PRs arrive as `pr/*` branches.
+Mirrors: [git.edufeed.org/edufeed/nope-mcp](https://git.edufeed.org/edufeed/nope-mcp) · [github.com/edufeed-org/nope-mcp](https://github.com/edufeed-org/nope-mcp). Issues and PRs are welcome on any of the three — Nostr PRs arrive as `pr/*` branches.
 
 Releases are tagged (`v0.1.0`, …) and listed in [CHANGELOG.md](CHANGELOG.md).
+
+## MCP Registry
+
+[`server.json`](server.json) is the manifest nope-mcp publishes to the [official MCP
+Registry](https://registry.modelcontextprotocol.io) as `org.edufeed/nope-mcp`, pointing at the
+`https://mcp.edufeed.org/mcp` remote. Its `version` always matches `package.json` (enforced by
+`test/server-json.test.ts`).
+
+Publishing is done with the registry's [`mcp-publisher`](https://github.com/modelcontextprotocol/registry)
+CLI after DNS-based domain verification of `edufeed.org` (the registry proves ownership of the
+`org.edufeed` namespace via a TXT record, not a secret the CLI holds) — there is no key to manage
+and no command embeds one.
 
 ## Features
 
@@ -31,7 +43,7 @@ Releases are tagged (`v0.1.0`, …) and listed in [CHANGELOG.md](CHANGELOG.md).
 
 ### URL → Form-Prefill Metadata
 - `extract_metadata(url, variant, skosSchemes?)` — fetch a public web page and produce a complete AMB/EKW form-prefill payload. Returns OpenGraph fallback by default; with `ANTHROPIC_API_KEY` set, an LLM grounded in the configured SKOS vocabularies fills SKOS-typed fields with concept IDs and per-field evidence quotes.
-- Library export: `import { extractMetadata } from 'amb-mcp/lib'` for direct in-process use (e.g. SvelteKit server routes).
+- Library export: `import { extractMetadata } from 'nope-mcp/lib'` for direct in-process use (e.g. SvelteKit server routes).
 
 ### Signing & Publishing
 - NIP-46 remote signing (bunker) with QR code connection flow
@@ -67,6 +79,7 @@ cp .env.example .env
 | `INDEXER_ENDPOINTS` | `search_passages` | _(unset — tool disabled)_ | Comma-separated `wss://relay=https://indexer` pairs mapping each AMB relay to its amb-indexer base URL. Enables `search_passages`. |
 | `INDEXER_API_TOKEN` | `search_passages` | _(unset)_ | Bearer token for the indexer's `/search_chunks` (shared default for all endpoints). |
 | `INDEXER_API_TOKENS` | `search_passages` | _(unset)_ | Per-relay token overrides, comma-separated `wss://relay=token` pairs — each deployed indexer instance has its own token. Every `INDEXER_ENDPOINTS` entry must be covered by this or `INDEXER_API_TOKEN`; a partially tokened config fails at startup. |
+| `OPEN_LICENSES_ONLY` | all transports | `true` | Search results (`search_resources`, `search_content`, `search_passages`) hold only openly licensed learning resources: CC0, Public Domain Mark, CC BY, CC BY-SA. Other content kinds carry no license and are always included; `get_resource` is never filtered but reports `openLicense`. `false` (or `0`/`no`/`off`) returns every resource. |
 | `SPELL_RELAYS` | `search_passages` | `wss://relay.edufeed.org` | Relays to fetch kind-777 spells (and kind-3 contact lists) from. |
 | `LOG_LEVEL` | all transports | `info` | Per-tool-call logging on **stderr** (stdout belongs to the stdio transport). Every call emits one JSON line: `{"ts":"2026-09-14T12:00:00.000Z","tool":"search_passages","ms":412,"ok":true,"session":"<id>","args":{"question":"…","kinds":[30142]}}` — `ok` is `false` for `isError` results, thrown errors, and text results whose JSON body carries an `error` code (typed failures such as `relay_unreachable`) — `error` then holds the message or code; strings in `args` are cut at 120 chars, arrays longer than five collapse to `{length, head}`. `info` (default) logs every call, `warn`/`error` log failures only, `silent` disables the lines. |
 | `EDUFEED_APP_BASE_URL` | all transports | _(unset)_ | Frontend base URL (no trailing slash, e.g. `https://app.edufeed.org`). When set, results from `search_content`, `search_resources`, `get_resource`, and `search_calendar_events` include a `url` field pointing at the edufeed-app viewer page (`<base>/<naddr>`) so LLM clients can render direct links. Unset means no `url` field. |
@@ -85,7 +98,7 @@ cp .env.example .env
 ### Option 1: Add to Claude Code (Recommended)
 
 ```bash
-claude mcp add amb-relay -- bun run /path/to/amb-mcp/src/stdio.ts
+claude mcp add nope-mcp -- bun run /path/to/nope-mcp/src/stdio.ts
 ```
 
 This uses the default public relay (`wss://relay.edufeed.org`). To point at another relay — e.g. the local docker relay from [Development](#test-against-local-relay) — add `-e AMB_RELAYS=ws://localhost:3337`.
@@ -124,21 +137,26 @@ node dist/http.js     # production (after `npm run build`)
 | `HTTP_ALLOWED_HOSTS` | _(unset)_ | Comma-separated Host allow-list. Enables DNS-rebinding protection when set. |
 | `HTTP_ALLOWED_ORIGINS` | _(unset)_ | Comma-separated Origin allow-list. |
 | `OAUTH_ISSUER` | `https://auth.edufeed.org/realms/edufeed` | OIDC issuer whose tokens are accepted. |
-| `OAUTH_AUDIENCE` | `amb-mcp` | Required `aud` claim in access tokens. |
+| `OAUTH_AUDIENCE` | `nope-mcp,amb-mcp` | Comma-separated accepted audiences; a token whose `aud` contains any of them is valid. |
 | `OAUTH_JWKS_URI` | `<issuer>/protocol/openid-connect/certs` | JWKS endpoint for token signature verification. |
-| `OAUTH_RESOURCE_URL` | `https://mcp.amb.edufeed.org/mcp` | Public resource URL advertised in the OAuth protected-resource metadata document. |
+| `OAUTH_RESOURCE_URL` | `https://mcp.amb.edufeed.org/mcp` | Fallback PRM resource for a host not in `HTTP_ALLOWED_HOSTS`. Otherwise the resource is derived per request (RFC 9728): `/.well-known/oauth-protected-resource` → `https://<host>/`, `/.well-known/oauth-protected-resource/mcp` → `https://<host>/mcp`. |
 
 **Authentication model:** the HTTP transport is an OAuth 2.0 resource server.
 
 - A request **without** an `Authorization` header gets an anonymous **read-only** session (`mcp:read`): search, get, browse, resolve, SKOS lookups.
-- A request with a **valid JWT** (issued by `OAUTH_ISSUER` for audience `OAUTH_AUDIENCE`) is granted the token's scopes: `mcp:read` and/or `mcp:extract` (the budget-spending `extract_metadata` tool). An invalid token is rejected with 401.
+- A request with a **valid JWT** (issued by `OAUTH_ISSUER` for one of the `OAUTH_AUDIENCE` audiences) is granted the token's scopes: `mcp:read` and/or `mcp:extract` (the budget-spending `extract_metadata` tool). An invalid token is rejected with 401.
 - **Write/signing tools are never exposed over HTTP** — they are only available on the stdio and Nostr transports. Insufficient scope means the tool is simply absent from `tools/list`.
 
 The server exposes:
 
-- `POST /mcp` — JSON-RPC requests (initialize, tool calls, etc.)
-- `GET /mcp` — server-push SSE stream for the current session
-- `DELETE /mcp` — terminate the current session
+- `POST /` and `POST /mcp` — JSON-RPC requests (initialize, tool calls, etc.), same session map
+- `GET /` and `GET /mcp` — server-push SSE stream for the current session
+- `GET /` (plain browser request — no `Mcp-Session-Id`, no `Accept: text/event-stream`) — a small
+  JSON info document (`name`, `version`, `mcp`, `docs`, `transport`) instead of the MCP 404;
+  `GET /mcp` always behaves as an MCP session request
+- `DELETE /` and `DELETE /mcp` — terminate the current session
+- `GET /.well-known/oauth-protected-resource` / `GET /.well-known/oauth-protected-resource/mcp` —
+  RFC 9728 protected-resource metadata for `/` and `/mcp` respectively, host-aware
 - `GET /healthz` — unauthenticated liveness probe
 
 Example handshake with `curl`:
@@ -175,9 +193,11 @@ fields: a name and a URL. So the URL is where a connection states which relays
 it wants searched by default:
 
 ```
-https://mcp.amb.edufeed.org/mcp?relays=sodix
-https://mcp.amb.edufeed.org/mcp?relays=amb-relay,sodix,oersi
+https://mcp.edufeed.org/mcp?relays=sodix
+https://mcp.edufeed.org/mcp?relays=amb-relay,sodix,oersi
 ```
+
+(The previous host, `https://mcp.amb.edufeed.org/mcp`, keeps working unchanged — both accept the same `?relays=` syntax.)
 
 The relays named in `?relays=` become that session's **default** set — searched
 on every `search_content` / `search_resources` call. Every other relay the
@@ -213,8 +233,11 @@ standard one.
 A managed instance is hosted at:
 
 ```
-https://mcp.amb.edufeed.org/mcp
+https://mcp.edufeed.org/mcp
 ```
+
+The previous URL, `https://mcp.amb.edufeed.org/mcp`, remains valid and serves
+the same deployment.
 
 It serves three relays — `amb-relay` (`wss://amb-relay.edufeed.org`, the
 default), plus `oersi` and `sodix` as per-call extras — so
@@ -461,7 +484,7 @@ Fetch one or more public web pages (or PDFs) and produce an AMB/EKW form-prefill
 payload. Returns OpenGraph/JSON-LD fallback by default; with `ANTHROPIC_API_KEY`
 set, an LLM grounded in the configured SKOS vocabularies fills SKOS-typed fields
 with concept IDs and per-field evidence quotes. Also available as a library
-export: `import { extractMetadata } from 'amb-mcp/lib'`.
+export: `import { extractMetadata } from 'nope-mcp/lib'`.
 
 Parameters:
 | Name | Type | Description |

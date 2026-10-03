@@ -2,6 +2,7 @@ import type { Filter } from 'nostr-tools';
 import type { ContentType } from '../content/types.js';
 import { SNIPPET_KIND } from '../content/snippet.js';
 import { normalizeCommunityPubkey } from '../utils/community.js';
+import { OPEN_LICENSE_URIS } from '../license/open.js';
 
 /**
  * Parameters for searching AMB resources
@@ -29,6 +30,16 @@ export interface SearchParams {
   authors?: string[];
   /** Maximum number of results (1-250, default: 20) */
   limit?: number;
+  /**
+   * Restrict to openly licensed resources. Without free text (a pure
+   * field-filter or browse search) this appends one `license.id:<uri>` filter
+   * per OPEN_LICENSE_URIS entry — the relay ORs repeated filters on the same
+   * base field ("license") and ANDs them with every other field filter. With
+   * free text no license filter is added, because any field filter disables
+   * amb-relay's chunk rerank; the filter limit is over-fetched instead and the
+   * caller post-filters and trims to `limit`.
+   */
+  openLicensesOnly?: boolean;
 }
 
 export interface BuildFilterResult {
@@ -36,6 +47,61 @@ export interface BuildFilterResult {
   filter: Filter;
   /** NIP-50 search string (may be empty) */
   search: string;
+  /** Results the caller wants; filter.limit may exceed it when over-fetching for a post-filter. */
+  limit: number;
+}
+
+/** Over-fetch for a free-text open-licenses-only search, post-filtered client-side. */
+export const RESOURCE_LICENSE_OVERFETCH_FACTOR = 3;
+
+/**
+ * Port of the relay's NIP-50 tokenizer (nostrlib typesense30142
+ * tokenizeSearch): split on spaces, a standalone "quoted phrase" is one
+ * unquoted token, embedded "quoted" segments stay inside their token.
+ */
+function tokenizeSearch(s: string): string[] {
+  const tokens: string[] = [];
+  let i = 0;
+  while (i < s.length) {
+    while (i < s.length && s[i] === ' ') i++;
+    if (i >= s.length) break;
+    if (s[i] === '"') {
+      const end = s.indexOf('"', i + 1);
+      if (end >= 0) {
+        tokens.push(s.slice(i + 1, end));
+        i = end + 1;
+        continue;
+      }
+    }
+    const start = i;
+    while (i < s.length && s[i] !== ' ') {
+      if (s[i] === '"') {
+        const end = s.indexOf('"', i + 1);
+        if (end >= 0) {
+          i = end + 1;
+          continue;
+        }
+      }
+      i++;
+    }
+    tokens.push(s.slice(start, i));
+  }
+  return tokens;
+}
+
+/** Relay parseFieldFilter: `field:value` with a non-empty field and a non-empty (unquoted) value. */
+function isFieldFilterToken(token: string): boolean {
+  const colon = token.indexOf(':');
+  return colon > 0 && token.slice(colon + 1).replace(/^"+|"+$/g, '') !== '';
+}
+
+/**
+ * Mirror of amb-relay `searchHasFreeText`: at least one raw term remains after
+ * removing field:value tokens (a `sort:` directive is field-shaped too). Only
+ * searches with free text are eligible for the relay's chunk rerank.
+ */
+export function searchHasFreeText(search: string): boolean {
+  return tokenizeSearch(search).some((t) => !isFieldFilterToken(t));
 }
 
 /**
@@ -97,10 +163,18 @@ export function buildFilter(params: SearchParams): BuildFilterResult {
       `educationalLevel.prefLabel.${language}:${escapeSearchValue(params.educationalLevelLabel)}`
     );
   }
+  if (params.openLicensesOnly) {
+    if (searchHasFreeText(searchParts.join(' '))) {
+      filter.limit = Math.min(limit * RESOURCE_LICENSE_OVERFETCH_FACTOR, 250);
+    } else {
+      for (const uri of OPEN_LICENSE_URIS) searchParts.push(`license.id:${uri}`);
+    }
+  }
 
   return {
     filter,
     search: searchParts.join(' '),
+    limit,
   };
 }
 

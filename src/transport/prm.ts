@@ -12,3 +12,17 @@ export function buildProtectedResourceMetadata(cfg: PrmConfig): Record<string, u
     bearer_methods_supported: ['header'],
   };
 }
+
+const PRM_WELL_KNOWN = '/.well-known/oauth-protected-resource';
+
+/**
+ * Where the PRM document for `resource` lives, per RFC 9728 §3.1: the
+ * well-known segment is inserted between the origin and the resource path,
+ * so `https://h/` ↔ `https://h/.well-known/oauth-protected-resource` and
+ * `https://h/mcp` ↔ `https://h/.well-known/oauth-protected-resource/mcp`.
+ */
+export function protectedResourceMetadataUrl(resource: string): string {
+  const url = new URL(resource);
+  const path = url.pathname === '/' ? '' : url.pathname.replace(/\/$/, '');
+  return `${url.origin}${PRM_WELL_KNOWN}${path}`;
+}

@@ -48,14 +48,17 @@ export function registerTools(
     defaultsFromConnectorUrl?: boolean;
     spellClient?: AMBRelayClient;
     indexer?: IndexerClient;
+    /** Search results hold openly licensed resources only (OPEN_LICENSES_ONLY, default true). */
+    openLicensesOnly?: boolean;
   },
 ): void {
   if (profile.read) {
     // Query / read tools
     const passagesAvailable = !!(options?.indexer && options?.spellClient);
-    registerSearchTool(server, client);
-    registerSearchContentTool(server, client, { passagesAvailable });
-    registerGetTool(server, client);
+    const openLicensesOnly = options?.openLicensesOnly ?? true;
+    registerSearchTool(server, client, { openLicensesOnly });
+    registerSearchContentTool(server, client, { passagesAvailable, openLicensesOnly });
+    registerGetTool(server, client, { openLicensesOnly });
     registerBrowseSubjectsTool(server, client);
     registerBrowseResourceTypesTool(server, client);
     registerBrowseEducationalLevelsTool(server, client);
@@ -68,7 +71,7 @@ export function registerTools(
     registerResolvePublisherTool(server, client);
     if (calendarClient) registerCalendarTools(server, calendarClient);
     if (options?.indexer && options?.spellClient) {
-      registerSearchPassagesTool(server, client, options.spellClient, options.indexer);
+      registerSearchPassagesTool(server, client, options.spellClient, options.indexer, { openLicensesOnly });
     }
   }
 

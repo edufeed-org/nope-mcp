@@ -22,6 +22,7 @@ import {
 } from '../skos/builder/index.js';
 import { getLabel } from '../skos/parser.js';
 import type { SKOSConcept } from '../skos/types.js';
+import { READ_ONLY, SESSION_MUTATOR, SESSION_DESTRUCTIVE } from './annotations.js';
 
 /**
  * Extract user pubkey from request context
@@ -103,6 +104,7 @@ function registerCreateVocabularyTool(server: McpServer): void {
           .optional()
           .describe('License URI (e.g., "https://creativecommons.org/licenses/by/4.0/")'),
       },
+      annotations: SESSION_MUTATOR,
     },
     async (params, extra) => {
       try {
@@ -176,6 +178,7 @@ function registerAddConceptTool(server: McpServer): void {
           .optional()
           .describe('URI of parent concept (creates broader/narrower relationship)'),
       },
+      annotations: SESSION_MUTATOR,
     },
     async (params, extra) => {
       try {
@@ -241,6 +244,7 @@ function registerSetRelationshipTool(server: McpServer): void {
           .enum(['broader', 'narrower', 'related'])
           .describe('Type of relationship'),
       },
+      annotations: SESSION_MUTATOR,
     },
     async (params, extra) => {
       try {
@@ -302,6 +306,7 @@ function registerAddMappingTool(server: McpServer): void {
           .enum(['exactMatch', 'closeMatch', 'broadMatch', 'narrowMatch', 'relatedMatch'])
           .describe('Type of mapping'),
       },
+      annotations: SESSION_MUTATOR,
     },
     async (params, extra) => {
       try {
@@ -362,6 +367,7 @@ function registerUpdateConceptTool(server: McpServer): void {
         altLabel: z.array(localizedStringSchema).optional().describe('New alternative labels'),
         notation: z.array(z.string()).optional().describe('New notation codes'),
       },
+      annotations: SESSION_MUTATOR,
     },
     async (params, extra) => {
       try {
@@ -420,6 +426,7 @@ function registerRemoveConceptTool(server: McpServer): void {
         schemeUri: z.string().url().describe('URI of the vocabulary'),
         conceptUri: z.string().url().describe('URI of the concept to remove'),
       },
+      annotations: SESSION_MUTATOR,
     },
     async (params, extra) => {
       try {
@@ -471,6 +478,7 @@ function registerListVocabulariesTool(server: McpServer): void {
       title: 'List Vocabularies',
       description: 'List all vocabularies currently being built in this session.',
       inputSchema: {},
+      annotations: READ_ONLY,
     },
     async (_params, extra) => {
       try {
@@ -537,6 +545,7 @@ function registerGetVocabularyStatusTool(server: McpServer): void {
           .optional()
           .describe('Preferred language for labels (e.g., "de", "en")'),
       },
+      annotations: READ_ONLY,
     },
     async (params, extra) => {
       try {
@@ -646,6 +655,7 @@ function registerExportTurtleTool(server: McpServer): void {
           .optional()
           .describe('Run validation before export (default: true)'),
       },
+      annotations: READ_ONLY,
     },
     async (params, extra) => {
       try {
@@ -738,6 +748,7 @@ function registerDeleteVocabularyTool(server: McpServer): void {
       inputSchema: {
         schemeUri: z.string().url().describe('URI of the vocabulary to delete'),
       },
+      annotations: SESSION_DESTRUCTIVE,
     },
     async (params, extra) => {
       try {
@@ -792,6 +803,7 @@ function registerImportTurtleTool(server: McpServer): void {
       inputSchema: {
         turtle: z.string().describe('Turtle content to import'),
       },
+      annotations: SESSION_MUTATOR,
     },
     async (params, extra) => {
       try {

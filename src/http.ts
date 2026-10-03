@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * AMB Relay MCP Server - Streamable HTTP Transport
+ * nope-mcp (formerly amb-mcp) - Streamable HTTP Transport
  *
  * Third entry point alongside `src/index.ts` (Nostr/ContextVM) and
  * `src/stdio.ts` (stdio). Mounts MCP at `/mcp` so web-based MCP clients
@@ -25,6 +25,7 @@ import { SERVER_NAME, SERVER_VERSION } from './server-info.js';
 import type { ToolProfile } from './tools/index.js';
 import { AMBRelayClient } from './relay/client.js';
 import { IndexerClient } from './indexer/client.js';
+import { parseOpenLicensesOnly } from './license/open.js';
 
 // Deliberate deviation: insufficient scope yields a session built WITHOUT those tools
 // (absent from tools/list; a call returns MCP method-not-found) rather than HTTP 403.
@@ -100,25 +101,33 @@ const CALENDAR_AUTHOR_SETS =
   process.env.CALENDAR_AUTHOR_SETS?.split(',').filter(Boolean) || [];
 const SPELL_RELAYS = process.env.SPELL_RELAYS?.split(',').filter(Boolean) || ['wss://relay.edufeed.org'];
 const indexer = IndexerClient.fromEnv(process.env.INDEXER_ENDPOINTS, process.env.INDEXER_API_TOKEN, process.env.INDEXER_API_TOKENS);
+const OPEN_LICENSES_ONLY = parseOpenLicensesOnly(process.env.OPEN_LICENSES_ONLY);
 
 const HTTP_PORT = Number(process.env.HTTP_PORT ?? 3000);
 const HTTP_HOST = process.env.HTTP_HOST ?? '0.0.0.0';
 const OAUTH_ISSUER = process.env.OAUTH_ISSUER || 'https://auth.edufeed.org/realms/edufeed';
-const OAUTH_AUDIENCE = process.env.OAUTH_AUDIENCE || 'amb-mcp';
+// Comma-separated; a token whose aud contains ANY of these is accepted.
+// `amb-mcp` stays accepted: Keycloak still issues it (edufeed-app, claude.ai).
+const OAUTH_AUDIENCE = (process.env.OAUTH_AUDIENCE || 'nope-mcp,amb-mcp')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 const OAUTH_JWKS_URI =
   process.env.OAUTH_JWKS_URI || `${OAUTH_ISSUER}/protocol/openid-connect/certs`;
+// Fallback PRM resource for hosts outside HTTP_ALLOWED_HOSTS; allowed hosts
+// (or any host, when the list is unset) get a resource derived per request.
 const OAUTH_RESOURCE_URL =
   process.env.OAUTH_RESOURCE_URL || 'https://mcp.amb.edufeed.org/mcp';
 const HTTP_ALLOWED_HOSTS = process.env.HTTP_ALLOWED_HOSTS?.split(',').map((s) => s.trim()).filter(Boolean);
 const HTTP_ALLOWED_ORIGINS = process.env.HTTP_ALLOWED_ORIGINS?.split(',').map((s) => s.trim()).filter(Boolean);
 
 async function main() {
-  console.log('Starting AMB Relay MCP Server (HTTP mode)...');
+  console.log('Starting nope-mcp (HTTP mode)...');
   console.log(`AMB Relays: ${AMB_RELAYS.join(', ')}`);
   if (AMB_EXTRA_RELAYS.length) console.log(`AMB Extra Relays: ${AMB_EXTRA_RELAYS.join(', ')}`);
   console.log(`Calendar Relays: ${CALENDAR_RELAYS.join(', ')}`);
   console.log(`HTTP bind: ${HTTP_HOST}:${HTTP_PORT}`);
-  console.log(`Auth: OAuth (issuer ${OAUTH_ISSUER})`);
+  console.log(`Auth: OAuth (issuer ${OAUTH_ISSUER}, audience ${OAUTH_AUDIENCE.join(' | ')})`);
   if (HTTP_ALLOWED_HOSTS?.length) console.log(`Allowed hosts: ${HTTP_ALLOWED_HOSTS.join(', ')}`);
   if (HTTP_ALLOWED_ORIGINS?.length) console.log(`Allowed origins: ${HTTP_ALLOWED_ORIGINS.join(', ')}`);
 
@@ -188,13 +197,14 @@ async function main() {
           defaultsFromConnectorUrl: relays.fromConnectorUrl,
           spellClient,
           indexer: indexer ?? undefined,
+          openLicensesOnly: OPEN_LICENSES_ONLY,
         },
       );
       return { server, dispose };
     },
   });
 
-  console.log(`✓ AMB MCP Server listening at http://${HTTP_HOST}:${HTTP_PORT}/mcp`);
+  console.log(`✓ nope-mcp listening at http://${HTTP_HOST}:${HTTP_PORT}/mcp`);
   console.log(`  Health: http://${HTTP_HOST}:${HTTP_PORT}/healthz`);
   console.log('Press Ctrl+C to stop');
 

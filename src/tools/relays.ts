@@ -3,6 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AMBRelayClient } from '../relay/client.js';
 import { getRelayListService } from '../signer/index.js';
 import { getSignerManager } from './signer.js';
+import { READ_ONLY, SESSION_MUTATOR } from './annotations.js';
 
 /**
  * list_relays payload: relay groups plus, when extras exist, an explicit
@@ -70,6 +71,7 @@ export function registerListRelaysTool(
         'extraRelays hold different corpora (e.g. the OERSI aggregation) and are only ' +
         'searched when a search/get tool call passes them in its relays parameter.',
       inputSchema: {},
+      annotations: READ_ONLY,
     },
     async () => {
       return {
@@ -107,6 +109,7 @@ export function registerAddRelayTool(
             'WebSocket URL of the relay to add (e.g., "wss://relay.example.com")'
           ),
       }),
+      annotations: SESSION_MUTATOR,
     },
     async ({ url }) => {
       // Validate it's a websocket URL
@@ -189,6 +192,7 @@ export function registerRemoveRelayTool(
       inputSchema: z.object({
         url: z.string().describe('URL of the relay to remove'),
       }),
+      annotations: SESSION_MUTATOR,
     },
     async ({ url }) => {
       const relays = client.getRelays();
@@ -273,6 +277,7 @@ export function registerRelayListGetTool(
           .optional()
           .describe('Public key to fetch relay list for (defaults to connected signer)'),
       },
+      annotations: READ_ONLY,
     },
     async (params, extra) => {
       try {
