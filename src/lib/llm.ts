@@ -188,6 +188,21 @@ const SUBMIT_TOOL = {
  * tooltips), so the model gets the same mental model the human form
  * gets.
  */
+/**
+ * Shared by the EKW and Konfi variants. The values are normalized again by
+ * `normalizeBibleReference` after the call; asking for the style here keeps
+ * spellings the normalizer cannot recognize to a minimum.
+ */
+const BIBLE_REFERENCE_GUIDE = [
+  '- `bibleReferences`: the bible passages the material works with, one per',
+  '  array entry, cited per the Loccum guidelines (abbreviations of the',
+  '  Einheitsübersetzung): book abbreviation without a dot, numbered books as',
+  '  digit + space, no space after the comma — e.g. "Mt 5,1-12", "Apg 2,1-12",',
+  '  "1 Kor 13,1-13", "Gen 2,4-7", "Ps 23". Convert full book names',
+  '  ("Apostelgeschichte", "1. Mose") and other abbreviations ("Mt.", "1 Mo",',
+  '  "Hiob") to this form. The evidence quote stays verbatim from the source.'
+];
+
 const KONFI_FIELD_GUIDE = [
   '',
   'Konfi-Arbeit (confirmation program) field semantics — read carefully',
@@ -220,8 +235,6 @@ const KONFI_FIELD_GUIDE = [
   '  Sprache). Do not infer from style alone.',
   '- `requiredMaterialsNote`: free-text shortlist of required materials',
   '  when the source spells them out (e.g. "Stifte, Plakate, Klebepunkte").',
-  '- `bibleReferences`: bible passages in book chapter,verse form, e.g.',
-  '  "Mt 5,1-12" or "Apostelgeschichte 2,1-12". Verbatim from the source.',
   'DO NOT use school-context fields (`schoolTypes`, `gradeLevels`,',
   '`ekwFachrichtung`) in this variant — Konfi pedagogy is not school',
   'teaching. The schema will strip them.'
@@ -273,7 +286,12 @@ function systemPrompt(variant: Variant): string {
     '  still synthesize these fields from the readable text. Do not leave them',
     '  empty just because no OG metadata is present.'
   ];
-  const parts = variant === 'konfi' ? [...base, ...KONFI_FIELD_GUIDE] : base;
+  const parts =
+    variant === 'konfi'
+      ? [...base, ...KONFI_FIELD_GUIDE, ...BIBLE_REFERENCE_GUIDE]
+      : variant === 'ekw'
+        ? [...base, ...BIBLE_REFERENCE_GUIDE]
+        : base;
   return parts.join(' ');
 }
 

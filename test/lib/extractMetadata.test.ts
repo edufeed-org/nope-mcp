@@ -229,6 +229,28 @@ describe('extractMetadata — LLM-enriched path', () => {
     expect(result.payload.bibleReferences).toEqual(['Mt 5,1-12']);
   });
 
+  it('normalizes bibleReferences to the Loccum form after the LLM call', async () => {
+    const html = `<html><head><title>x</title></head><body><p>y</p></body></html>`;
+    const llmClient = stubLlm(
+      { name: 'x', bibleReferences: ['Mk. 1,16-20', '1. Mose 2,4-7', 'Pfingstgeschichte'] },
+      { name: 'name', bibleReferences: 'Mk. 1,16-20' }
+    );
+
+    const result = await extractMetadata({
+      url: 'https://example.com/r',
+      variant: 'ekw',
+      fetchFn: fakeHtml(html),
+      llmClient,
+      skosSchemes: {}
+    });
+
+    expect(result.payload.bibleReferences).toEqual([
+      'Mk 1,16-20',
+      'Gen 2,4-7',
+      'Pfingstgeschichte'
+    ]);
+  });
+
   it('keeps Konfi-only vocab fields and bibleReferences under variant=konfi', async () => {
     // Konfi vocabularies share the LLM's tool-input shape with the EKW
     // schemes — generic concept-array fields keyed by form-field name. As
@@ -279,7 +301,7 @@ describe('extractMetadata — LLM-enriched path', () => {
     expect(result.payload.konfiZielgruppen).toEqual([
       { id: KONFI_ZIELGRUPPEN_ID, prefLabel: 'Konfis' }
     ]);
-    expect(result.payload.bibleReferences).toEqual(['Apostelgeschichte 2,1-12']);
+    expect(result.payload.bibleReferences).toEqual(['Apg 2,1-12']);
     expect(result.payload.plainLanguage).toBe(true);
     expect(result.payload.requiredMaterialsNote).toBe('Stifte, Plakate');
   });

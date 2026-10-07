@@ -218,6 +218,23 @@ describe('llmEnrich', () => {
     expect(props.bibleReferences?.type).toBe('array');
   });
 
+  it.each(['ekw', 'konfi'] as const)(
+    'asks for bible references per the Loccum guidelines under variant=%s',
+    async (variant) => {
+      const { client, calls } = stubClient({ payload: {}, evidence: {} });
+      await llmEnrich({ client, variant, page: { ogTags: {}, readableText: 'x' }, vocabs: {} });
+      const params = calls[0] as { system: string | Array<{ text?: string }> };
+      const systemText = typeof params.system === 'string'
+        ? params.system
+        : params.system.map((s) => s.text ?? '').join(' ');
+      for (const example of ['Mt 5,1-12', 'Apg 2,1-12', '1 Kor 13,1-13', 'Gen 2,4-7', 'Ps 23']) {
+        expect(systemText).toContain(`"${example}"`);
+      }
+      expect(systemText).toMatch(/Loccum/);
+      expect(systemText).not.toContain('Apostelgeschichte 2,1-12');
+    }
+  );
+
   it('includes Konfi-specific field guidance in the system prompt under variant=konfi', async () => {
     // Konfi vocabularies overlap semantically (Themen vs Dimensionen, Lernformat
     // vs Methode) — without explicit guidance the LLM conflates them. Make

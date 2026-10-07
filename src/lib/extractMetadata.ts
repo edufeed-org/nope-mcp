@@ -3,6 +3,7 @@ import { fetchPage, type FetchPageResult } from './fetchPage.js';
 import { llmEnrich, type AnthropicLike } from './llm.js';
 import { vocabSnapshot, type VocabSnapshot } from './vocabs.js';
 import { formPayload, type Variant, type ExtractMetadataResult } from './schema.js';
+import { normalizeBibleReference } from './bibleReference.js';
 
 /**
  * Orchestrate URL → form-prefill payload.
@@ -366,6 +367,13 @@ export async function extractMetadata(
   // LLM is conservative. LLM output wins on conflict.
   const merged = { ...ogPayload(page), ...filtered };
   const variantSafe = applyVariantSchema(merged, variant);
+  // Bible references per the Loccum guidelines even when the model ignored
+  // the prompt; unrecognized free text passes through unchanged.
+  if (Array.isArray(variantSafe.bibleReferences)) {
+    variantSafe.bibleReferences = variantSafe.bibleReferences.map((v: unknown) =>
+      typeof v === 'string' ? normalizeBibleReference(v) : v
+    );
+  }
 
   // Keep evidence only for fields that survived filtering.
   const evidence: Record<string, string> = {};
