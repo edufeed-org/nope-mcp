@@ -2,7 +2,7 @@
   "name": "nope-mcp",
   "version": "0.4.0",
   "description": "ContextVM MCP server for querying AMB educational metadata from Nostr relays (formerly amb-mcp)",
-  "license": "Unlicense",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "dist/index.js",
   "exports": {
