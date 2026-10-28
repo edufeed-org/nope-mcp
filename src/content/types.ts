@@ -1,3 +1,5 @@
+import type { AccessLevel, LicenseInfo } from '../license/classify.js';
+
 /** Discriminant for the unified content result. */
 export type ContentType =
   | 'resource'
@@ -41,6 +43,10 @@ export interface ResourceResult extends ContentResultBase {
   creator?: Array<{ name: string; type: string }>;
   /** Resource publisher(s) from AMB metadata — who published it. Distinct from eventAuthor. */
   publisher?: Array<{ name: string; type: string }>;
+  /** Classified `license:id`; null when the resource carries no license. */
+  license: LicenseInfo | null;
+  /** `full` for CC/PD licenses, `metadata-only` for any other or no license — only `full` resources carry a snippet/page/heading. */
+  accessLevel: AccessLevel;
 }
 
 export interface ArticleResult extends ContentResultBase {

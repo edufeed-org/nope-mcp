@@ -22,15 +22,22 @@ describe('buildServerInstructions', () => {
     expect(text).toMatch(/citations drawn from resources' fulltext/);
   });
 
-  it('states the open-license policy when OPEN_LICENSES_ONLY is on', () => {
-    const text = buildServerInstructions({ licenseFilterMax: 'open' });
-    expect(text).toMatch(/limited to open licenses \(CC0, the Public Domain Mark, CC BY, CC BY-SA\)/);
+  it('always states the two-tier license policy (license/accessLevel/licenseFilter)', () => {
+    const open = buildServerInstructions({ licenseFilterMax: 'open' });
+    const any = buildServerInstructions({ licenseFilterMax: 'any' });
+    for (const text of [open, any]) {
+      expect(text).not.toMatch(/limited to open licenses/);
+      expect(text).toMatch(/accessLevel \("full" for Creative Commons and Public Domain licenses, "metadata-only"/);
+      expect(text).toMatch(/licenseFilter narrows search_resources, search_content and search_passages/);
+    }
   });
 
-  it('omits the open-license claim when OPEN_LICENSES_ONLY is off', () => {
-    const text = buildServerInstructions({ licenseFilterMax: 'any' });
-    expect(text).not.toMatch(/limited to open licenses/);
-    expect(text).not.toMatch(/CC BY-SA/);
+  it('states the operator ceiling only when licenseFilterMax is below any', () => {
+    const open = buildServerInstructions({ licenseFilterMax: 'open' });
+    expect(open).toMatch(/caps every search tool's licenseFilter at 'open'/);
+
+    const any = buildServerInstructions({ licenseFilterMax: 'any' });
+    expect(any).not.toMatch(/caps every search tool's licenseFilter/);
   });
 
   it('lists every unfiltered content kind alongside learning resources', () => {
@@ -40,13 +47,13 @@ describe('buildServerInstructions', () => {
     );
   });
 
-  it('says a snippet-only passage simply has no fulltext yet when OPEN_LICENSES_ONLY is on (license-gated hits are already dropped)', () => {
+  it('says a snippet-only passage simply has no fulltext yet when licenseFilterMax is below any (metadata-only hits are already dropped)', () => {
     const text = buildServerInstructions({ licenseFilterMax: 'open' });
     expect(text).toMatch(/A passage with a snippet but no text has no fulltext yet; say so\./);
     expect(text).not.toMatch(/A passage with a snippet but no text is either license-gated/);
   });
 
-  it('keeps the license-gated possibility when OPEN_LICENSES_ONLY is off', () => {
+  it('keeps the license-gated possibility when licenseFilterMax is any', () => {
     const text = buildServerInstructions({ licenseFilterMax: 'any' });
     expect(text).toMatch(
       /A passage with a snippet but no text is either license-gated or has no fulltext yet; say so\./

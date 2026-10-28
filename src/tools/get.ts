@@ -40,7 +40,10 @@ interface GetClient {
 
 /**
  * The 30142 formatting. A lookup is never license-filtered (it is an
- * explicit request), but reports openLicense — whether search would list it.
+ * explicit request). `resource.license`/`resource.accessLevel` carry the
+ * classified tier (see license/classify.ts); `accessLevel` is mirrored at
+ * the top level for convenience. `openLicense` is kept for one release,
+ * deprecated in favour of `accessLevel`.
  */
 function formatAMB(event: NostrEvent | null, lang: string): Record<string, unknown> {
   if (!event) return { resource: null, message: 'Resource not found' };
@@ -52,7 +55,12 @@ function formatAMB(event: NostrEvent | null, lang: string): Record<string, unkno
       rawEvent: { id: event.id, pubkey: event.pubkey, created_at: event.created_at },
     };
   }
-  return { resource: toSimplifiedResource(ambResource, lang), openLicense: eventHasOpenLicense(event) };
+  const resource = toSimplifiedResource(ambResource, lang);
+  return {
+    resource,
+    accessLevel: resource.accessLevel,
+    openLicense: eventHasOpenLicense(event),
+  };
 }
 
 export async function runGetResource(
@@ -117,15 +125,27 @@ export async function runGetResource(
   return formatAMB(event, lang);
 }
 
-/** The openLicense sentence, worded to match whether search is currently license-filtered. */
-function openLicenseNote(openLicensesOnly: boolean): string {
-  return openLicensesOnly
-    ? 'Lookups are not license-filtered: a learning resource carries openLicense (true for ' +
-        'CC0, Public Domain, CC BY, CC BY-SA — the open licenses that search results are ' +
-        'currently limited to). '
-    : 'A learning resource carries openLicense (true for CC0, Public Domain, CC BY, CC BY-SA); ' +
-        'license filtering is currently off, so search results may include resources under ' +
-        'other licenses or with no license at all. ';
+/**
+ * The license/accessLevel sentence, worded for the two-tier policy and the
+ * server's licenseFilter ceiling (LICENSE_FILTER_MAX). get_resource is never
+ * filtered — it always returns the resource, whatever its license.
+ */
+function openLicenseNote(licenseFilterMax: LicenseFilter): string {
+  const ceiling =
+    licenseFilterMax !== 'any'
+      ? `This server caps the search tools' licenseFilter at '${licenseFilterMax}'; get_resource ` +
+        'lookups are unaffected. '
+      : '';
+  return (
+    'get_resource is never license-filtered: a learning resource carries license ' +
+    '({id, label}, or null when unlicensed) and accessLevel ("full" for Creative Commons and ' +
+    'Public Domain licenses, "metadata-only" otherwise). Only accessLevel:"full" resources have ' +
+    'indexed fulltext, snippets and passages — present a "metadata-only" resource by its title, ' +
+    'description, license and link, never quoted beyond its metadata, and always name the ' +
+    'license and the creator/publisher. ' +
+    ceiling +
+    'openLicense is kept for compatibility (deprecated; use accessLevel). '
+  );
 }
 
 /**
@@ -136,8 +156,7 @@ export function registerGetTool(
   client: AMBRelayClient,
   options?: { licenseFilterMax?: LicenseFilter }
 ): void {
-  // Transitional adapter to the old boolean; B3/B4 replace it.
-  const openLicensesOnly = (options?.licenseFilterMax ?? 'any') !== 'any';
+  const licenseFilterMax = options?.licenseFilterMax ?? 'any';
   server.registerTool(
     'get_resource',
     {
@@ -150,7 +169,7 @@ export function registerGetTool(
         'search results. Bare identifier/eventId lookups (no naddr) always resolve the ' +
         'full educational-resource metadata (kind 30142), including creator/publisher ' +
         'and educational properties. ' +
-        openLicenseNote(openLicensesOnly) +
+        openLicenseNote(licenseFilterMax) +
         'When presenting the resource, render a markdown link the user can open: prefer ' +
         'its sourcePage (the original source page); fall back to url (the edufeed viewer) ' +
         'only when sourcePage is absent.',

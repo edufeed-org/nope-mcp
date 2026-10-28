@@ -128,6 +128,7 @@ describe('runGetResource openLicense flag', () => {
   it('marks an openly licensed resource', async () => {
     const out = await runGetResource(fakeGetClient(resource('https://creativecommons.org/licenses/by-sa/4.0/')), { identifier: 'r1' });
     expect(out.openLicense).toBe(true);
+    expect(out.accessLevel).toBe('full');
     expect(out.resource).toBeTruthy();
   });
 
@@ -135,12 +136,16 @@ describe('runGetResource openLicense flag', () => {
     const nc = await runGetResource(fakeGetClient(resource('https://creativecommons.org/licenses/by-nc/4.0/')), { eventId: 'x' });
     expect(nc.resource).toBeTruthy();
     expect(nc.openLicense).toBe(false);
+    // BY-NC is tier-1 (cc group) for access purposes: full access, not open.
+    expect(nc.accessLevel).toBe('full');
     const none = await runGetResource(
       fakeGetClient(resource()),
       { naddr: nip19.naddrEncode({ kind: 30142, pubkey: author, identifier: 'r1', relays: [] }) }
     );
     expect(none.resource).toBeTruthy();
     expect(none.openLicense).toBe(false);
+    expect(none.accessLevel).toBe('metadata-only');
+    expect((none.resource as { license: unknown }).license).toBeNull();
   });
 
   it('leaves non-resource kinds and misses without the flag', async () => {
@@ -149,9 +154,9 @@ describe('runGetResource openLicense flag', () => {
   });
 });
 
-function getResourceDescription(openLicensesOnly: boolean): string {
+function getResourceDescription(licenseFilterMax: 'open' | 'any'): string {
   const session = buildSessionServer(['wss://relay.edufeed.org'], ['wss://relay.edufeed.org'], undefined, {
-    licenseFilterMax: openLicensesOnly ? 'open' : 'any',
+    licenseFilterMax,
   });
   const registry = (
     session.server as unknown as { _registeredTools: Record<string, { description?: string }> }
@@ -161,15 +166,19 @@ function getResourceDescription(openLicensesOnly: boolean): string {
   return description;
 }
 
-describe('get_resource tool description matches the OPEN_LICENSES_ONLY setting', () => {
-  it('says search is limited to open licenses when the setting is on', () => {
-    const description = getResourceDescription(true);
-    expect(description).toMatch(/the open licenses that search results are currently limited to/);
+describe('get_resource tool description matches the licenseFilterMax setting', () => {
+  it('mentions accessLevel and the deprecated openLicense flag regardless of the ceiling', () => {
+    for (const description of [getResourceDescription('open'), getResourceDescription('any')]) {
+      expect(description).toMatch(/accessLevel \("full" for Creative Commons and Public Domain licenses, "metadata-only"/);
+      expect(description).toMatch(/openLicense is kept for compatibility \(deprecated; use accessLevel\)/);
+    }
   });
 
-  it('says license filtering is off, instead of claiming search is open-only', () => {
-    const description = getResourceDescription(false);
-    expect(description).not.toMatch(/currently limited to/);
-    expect(description).toMatch(/license filtering is currently off/);
+  it('states the operator ceiling only when licenseFilterMax is below any', () => {
+    const open = getResourceDescription('open');
+    expect(open).toMatch(/caps the search tools' licenseFilter at 'open'/);
+
+    const any = getResourceDescription('any');
+    expect(any).not.toMatch(/caps the search tools' licenseFilter/);
   });
 });

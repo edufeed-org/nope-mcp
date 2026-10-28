@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { runContentSearch } from '../../src/tools/searchContent.js';
 import type { NostrEvent, Filter } from 'nostr-tools';
+import type { ResourceResult, ArticleResult } from '../../src/content/types.js';
 
 function evt(kind: number, id: string, tags: string[][], content = ''): NostrEvent {
   return { id, pubkey: 'a'.repeat(64), created_at: 1700000000, kind, tags, content, sig: 's' };
@@ -58,7 +59,7 @@ describe('runContentSearch', () => {
 
   it('returns an empty result set when the relay returns nothing', async () => {
     const out = await runContentSearch(fakeClient([]), { query: 'x' });
-    expect(out).toEqual({ total: 0, results: [] });
+    expect(out).toEqual({ total: 0, results: [], licenseFilter: 'any' });
   });
 
   it('passes the per-call relay selection through to queryEvents', async () => {
@@ -90,7 +91,7 @@ describe('runContentSearch', () => {
   });
 });
 
-describe('runContentSearch with openLicensesOnly', () => {
+describe('runContentSearch with licenseFilter', () => {
   const BY = 'https://creativecommons.org/licenses/by/4.0/';
   const NC = 'https://creativecommons.org/licenses/by-nc/4.0/';
   const res = (id: string, license?: string) =>
@@ -103,7 +104,7 @@ describe('runContentSearch with openLicensesOnly', () => {
     return { filters, queryEvents: async (f: Filter) => { filters.push(f); return events; } };
   }
 
-  it('over-fetches without any field filter, drops non-open resources, keeps other kinds in relay order', async () => {
+  it('over-fetches without any field filter, drops resources outside the filter, keeps other kinds in relay order', async () => {
     const article = evt(30023, 'art1', [['d', 'a'], ['title', 'Artikel']], 'body');
     const client = recordingClient([
       res('nc', NC), snip('nc', 30142, 'passage NC'),
@@ -111,7 +112,7 @@ describe('runContentSearch with openLicensesOnly', () => {
       res('none'),
       res('by', BY), snip('by', 30142, 'passage BY'),
     ]);
-    const out = await runContentSearch(client, { query: 'klima', limit: 20, openLicensesOnly: true });
+    const out = await runContentSearch(client, { query: 'klima', limit: 20, licenseFilter: 'open' });
 
     expect(client.filters[0].limit).toBe(60);
     expect(client.filters[0].search).toBe('klima');
@@ -119,11 +120,12 @@ describe('runContentSearch with openLicensesOnly', () => {
     expect(out.results[0].snippet).toBe('passage A');
     expect(out.results[1].snippet).toBe('passage BY');
     expect(out.total).toBe(2);
+    expect(out.licenseFilter).toBe('open');
   });
 
   it('trims the filtered list back to limit', async () => {
     const client = recordingClient([res('a', BY), res('b', NC), res('c', BY), res('d', BY)]);
-    const out = await runContentSearch(client, { limit: 2, types: ['resource'], openLicensesOnly: true });
+    const out = await runContentSearch(client, { limit: 2, types: ['resource'], licenseFilter: 'open' });
     expect(client.filters[0].limit).toBe(6);
     expect(out.results.map((r) => (r as { title?: string }).title)).toEqual(['R a', 'R c']);
     expect(out.total).toBe(2);
@@ -131,20 +133,85 @@ describe('runContentSearch with openLicensesOnly', () => {
 
   it('caps the over-fetch at the relay maximum of 250', async () => {
     const client = recordingClient([]);
-    await runContentSearch(client, { limit: 200, openLicensesOnly: true });
+    await runContentSearch(client, { limit: 200, licenseFilter: 'open' });
     expect(client.filters[0].limit).toBe(250);
   });
 
   it('does not over-fetch when resources are not among the requested types', async () => {
     const client = recordingClient([]);
-    await runContentSearch(client, { limit: 10, types: ['article', 'wiki'], openLicensesOnly: true });
+    await runContentSearch(client, { limit: 10, types: ['article', 'wiki'], licenseFilter: 'open' });
     expect(client.filters[0].limit).toBe(10);
   });
 
-  it('returns non-open resources when the switch is off', async () => {
+  it('returns resources outside the filter when licenseFilter is any', async () => {
     const client = recordingClient([res('nc', NC), res('none')]);
-    const out = await runContentSearch(client, { limit: 10, openLicensesOnly: false });
+    const out = await runContentSearch(client, { limit: 10, licenseFilter: 'any' });
     expect(client.filters[0].limit).toBe(10);
     expect(out.total).toBe(2);
+  });
+
+  it('clamps a request wider than the server ceiling and reports it', async () => {
+    const client = recordingClient([res('nc', NC), res('by', BY)]);
+    const out = await runContentSearch(
+      client,
+      { limit: 10, licenseFilter: 'any' },
+      { licenseFilterMax: 'open' }
+    );
+    expect(out.licenseFilter).toBe('open');
+    expect(out.licenseFilterClamped).toBe(true);
+    expect(out.total).toBe(1);
+  });
+});
+
+describe('runContentSearch license tiers on search_content results (B3)', () => {
+  const BY_NC_ND = 'https://creativecommons.org/licenses/by-nc-nd/4.0/';
+
+  function scenario(): NostrEvent[] {
+    const article = evt(30023, 'art1', [['d', 'a'], ['title', 'Artikel']], 'body');
+    const ncnd = evt(30142, 'ncnd1', [['d', 'ncnd1'], ['name', 'NC-ND Resource'], ['license:id', BY_NC_ND]]);
+    const ncndSnip = evt(
+      21142,
+      'snip-ncnd1',
+      [['e', 'ncnd1'], ['k', '30142'], ['score', '0.7'], ['page', '3'], ['heading', 'Intro']],
+      'passage NCND'
+    );
+    const unlicensed = evt(30142, 'none1', [['d', 'none1'], ['name', 'Unlicensed Resource']]);
+    const unlicensedSnip = evt(
+      21142,
+      'snip-none1',
+      [['e', 'none1'], ['k', '30142'], ['score', '0.6'], ['page', '1'], ['heading', 'Kapitel']],
+      'passage NONE'
+    );
+    return [article, ncnd, ncndSnip, unlicensed, unlicensedSnip];
+  }
+
+  it('licenseFilter "any" returns all three; metadata-only loses its fulltext, the cc resource keeps it', async () => {
+    const out = await runContentSearch(fakeClient(scenario()), { query: 'x', licenseFilter: 'any' });
+    expect(out.total).toBe(3);
+    expect(out.licenseFilter).toBe('any');
+
+    const article = out.results.find((r) => r.type === 'article') as ArticleResult;
+    const ncnd = out.results.find((r) => r.type === 'resource' && r.title === 'NC-ND Resource') as ResourceResult;
+    const unlicensed = out.results.find(
+      (r) => r.type === 'resource' && r.title === 'Unlicensed Resource'
+    ) as ResourceResult;
+
+    expect(article).toBeTruthy();
+
+    expect(unlicensed.accessLevel).toBe('metadata-only');
+    expect(unlicensed.license).toBeNull();
+    expect(unlicensed.snippet).toBeUndefined();
+    expect(unlicensed.page).toBeUndefined();
+    expect(unlicensed.heading).toBeUndefined();
+
+    expect(ncnd.accessLevel).toBe('full');
+    expect(ncnd.license?.label).toBe('CC BY-NC-ND 4.0');
+    expect(ncnd.snippet).toBe('passage NCND');
+  });
+
+  it('licenseFilter "open" returns only the article — other kinds are never filtered', async () => {
+    const out = await runContentSearch(fakeClient(scenario()), { query: 'x', licenseFilter: 'open' });
+    expect(out.results.map((r) => r.type)).toEqual(['article']);
+    expect(out.licenseFilter).toBe('open');
   });
 });

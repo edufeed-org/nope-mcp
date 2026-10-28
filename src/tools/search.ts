@@ -204,8 +204,9 @@ export function registerSearchTool(
           .optional()
           .describe(
             'Restrict results by license: "open" (CC0, Public Domain, CC BY, CC BY-SA), ' +
-              '"cc-any" (all Creative Commons and Public Domain) or "any" (default: every ' +
-              'resource, including unlicensed and all-rights-reserved).'
+              '"cc-any" (all Creative Commons and Public Domain) or "any" (every resource, ' +
+              "including unlicensed and all-rights-reserved). Default: the server's ceiling " +
+              '(normally any).'
           ),
         relays: z
           .array(z.string())
