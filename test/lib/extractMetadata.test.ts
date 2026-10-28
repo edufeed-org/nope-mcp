@@ -896,3 +896,78 @@ describe('extractMetadata — bible references need a chapter', () => {
   });
 });
 
+describe('extractMetadata — alias edge cases', () => {
+  const PUB = 'd2689e2f41dabfba953da26655a94ce2aa4e029c383ee921c6a4deafab99a612';
+  const canon = (d: string) => 'nostr:' + nip19.naddrEncode({ kind: 39738, pubkey: PUB, identifier: d, relays: [] });
+  const KL = nip19.naddrEncode({ kind: 39737, pubkey: PUB, identifier: 'klassenstufen', relays: [] });
+  const klassen: ParsedVocabulary = {
+    scheme: { id: 'nostr:' + KL, type: 'ConceptScheme', title: { de: 'Klassenstufen' }, hasTopConcept: [] },
+    concepts: new Map([
+      [canon('1'), { id: canon('1'), type: 'Concept', notation: ['1'], prefLabel: { de: '1' } }],
+      [canon('2'), { id: canon('2'), type: 'Concept', notation: ['2'], prefLabel: { de: '2' } }]
+    ])
+  };
+  beforeEach(() => {
+    vocabularyCache.clear();
+    vocabularyCache.set(KL, klassen);
+  });
+
+  it('accepts numeric aliases the model emits as JSON numbers or bare values', async () => {
+    const res = await extractMetadata({
+      url: 'https://example.org/p',
+      variant: 'ekw',
+      skosSchemes: { gradeLevels: KL },
+      fetchFn: fakeHtml('<html><title>P</title></html>'),
+      llmClient: stubLlm({ gradeLevels: [{ id: 1 }, 2, '2'] }, {})
+    });
+    expect(res.payload.gradeLevels).toEqual([
+      { id: canon('1'), prefLabel: '1' },
+      { id: canon('2'), prefLabel: '2' }
+    ]);
+  });
+
+  it('does not alias a concept whose d equals another concept id in the field (collision → full id shown)', async () => {
+    const COLL = nip19.naddrEncode({ kind: 39737, pubkey: PUB, identifier: 'coll', relays: [] });
+    const vocab: ParsedVocabulary = {
+      scheme: { id: 'nostr:' + COLL, type: 'ConceptScheme', title: { de: 'C' }, hasTopConcept: [] },
+      concepts: new Map([
+        [canon('text'), { id: canon('text'), type: 'Concept', notation: ['text'], prefLabel: { de: 'Nostr-Text' } }],
+        ['text', { id: 'text', type: 'Concept', prefLabel: { de: 'Bare-Text' } }] // a bare-token i tag
+      ])
+    };
+    vocabularyCache.set(COLL, vocab);
+    const llm = stubLlm({ learningResourceType: [{ id: 'text' }] }, {});
+    const createSpy = vi.spyOn(llm.messages, 'create');
+    const res = await extractMetadata({
+      url: 'https://example.org/p',
+      variant: 'ekw',
+      skosSchemes: { learningResourceType: COLL },
+      fetchFn: fakeHtml('<html><title>P</title></html>'),
+      llmClient: llm
+    });
+    const vocabText = (createSpy.mock.calls[0][0] as { messages: Array<{ content: Array<{ text: string }> }> }).messages[0].content[0].text;
+    expect(vocabText).toContain(canon('text').slice('nostr:'.length)); // the Nostr concept is shown by its full id
+    expect(res.payload.learningResourceType).toEqual([{ id: 'text', prefLabel: 'Bare-Text' }]); // "text" means the bare one
+  });
+});
+
+describe('extractMetadata — skipped source codes', () => {
+  it('keeps page_too_large for a skipped non-first source', async () => {
+    const big = 'x'.repeat(21 * 1024 * 1024);
+    const fetchFn = (async (input: string | URL | Request) => {
+      const u = String(input);
+      return new Response(u.endsWith('/big') ? `<html><body>${big}</body></html>` : '<html><title>P</title></html>', {
+        status: 200,
+        headers: { 'content-type': 'text/html' }
+      });
+    }) as unknown as typeof fetch;
+    const res = await extractMetadata({
+      urls: ['https://example.org/page', 'https://example.org/big'],
+      variant: 'ekw',
+      fetchFn,
+      llmClient: stubLlm({ name: 'P' }, {})
+    });
+    expect(res.skippedSources).toEqual([{ url: 'https://example.org/big', code: 'page_too_large', reason: expect.stringContaining('exceeds') }]);
+  });
+});
+

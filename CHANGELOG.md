@@ -33,8 +33,14 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
   reported in a new optional `skippedSources: [{url, code, reason}]`. The
   first source stays authoritative and still fails the call.
 - `fetchPage` rejects non-HTML, non-PDF bodies with `code: 'unsupported_type'`
-  instead of parsing binary as HTML, and treats `application/octet-stream`
-  with a `.pdf` URL as a PDF.
+  instead of parsing binary as HTML; PDFs are recognised by declared type
+  (`application/pdf`, `application/x-pdf`) or by sniffing `%PDF-` in
+  octet-stream/download bodies and bodies without a content-type.
+- `getVocabulary` accepts the canonical `nostr:naddr1…` scheme id (and
+  hinted naddrs) and caches all spellings under one entry; `getConcept`
+  returns undefined for Nostr concept ids instead of trying to fetch them.
+- Numeric concept aliases ("1", "2" for Klassenstufen) are accepted when
+  the model emits them as JSON numbers.
 
 ## [0.4.0] - 2026-10-02
 

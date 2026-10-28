@@ -68,6 +68,21 @@ export class UnsupportedContentTypeError extends Error {
   }
 }
 
+const PDF_TYPES = new Set(['application/pdf', 'application/x-pdf']);
+const OPAQUE_TYPES = new Set([
+  'application/octet-stream',
+  'binary/octet-stream',
+  'application/force-download',
+  'application/download',
+  'application/x-download'
+]);
+const READABLE_TYPES = new Set(['application/xhtml+xml', 'application/xml']);
+
+function hasPdfMagic(buffer: ArrayBuffer): boolean {
+  const head = new Uint8Array(buffer.slice(0, 4));
+  return head.length === 4 && head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46; // %PDF
+}
+
 export class PageTooLargeError extends Error {
   /** Stable machine-readable code; consumers match on this, not on .message. */
   readonly code = 'page_too_large' as const;
@@ -209,33 +224,49 @@ export async function fetchPage(input: FetchPageInput): Promise<FetchPageResult>
 
   const contentTypeHeader = response.headers.get('content-type') || '';
   const mime = contentTypeHeader.split(';')[0].trim().toLowerCase();
-  const isPdf =
-    mime === 'application/pdf' ||
-    (mime === 'application/octet-stream' && /\.pdf$/i.test(parsed.pathname));
-  // Readable bodies: HTML/XHTML/plain text (and an absent content-type, as
-  // before). Everything else — PowerPoint, Word, images, zips — cannot be
-  // turned into readable text here and is reported as unsupported.
-  const isReadable =
-    mime === '' || mime.startsWith('text/') || mime === 'application/xhtml+xml' || mime === 'application/xml';
-  if (!isPdf && !isReadable) {
+  // Body classification:
+  //  - declared PDF types → PDF
+  //  - opaque/download types and an absent content-type → sniff the magic
+  //    bytes: %PDF- → PDF; otherwise an absent type is read as HTML (as
+  //    before) and an opaque type is unsupported
+  //  - HTML/XHTML/XML/plain text → HTML path
+  //  - everything else (office documents, images, archives, JSON) cannot be
+  //    turned into readable text here → unsupported_type
+  let pdfBuffer: ArrayBuffer | undefined;
+  let html: string | undefined;
+  if (PDF_TYPES.has(mime)) {
+    pdfBuffer = await response.arrayBuffer();
+  } else if (mime === '' || OPAQUE_TYPES.has(mime)) {
+    const buffer = await response.arrayBuffer();
+    if (hasPdfMagic(buffer)) {
+      pdfBuffer = buffer;
+    } else if (mime === '') {
+      html = new TextDecoder('utf-8').decode(buffer);
+    } else {
+      throw new UnsupportedContentTypeError(
+        `unsupported content type ${mime} (not a PDF) for ${parsed.toString()}`
+      );
+    }
+  } else if (READABLE_TYPES.has(mime) || mime.startsWith('text/')) {
+    html = await response.text();
+  } else {
     throw new UnsupportedContentTypeError(
-      `unsupported content type ${mime || '(none)'} for ${parsed.toString()}`
+      `unsupported content type ${mime} for ${parsed.toString()}`
     );
   }
 
-  if (isPdf) {
+  if (pdfBuffer) {
     let readableText = '';
+    // Size cap is checked OUTSIDE the try so it surfaces as a typed error
+    // instead of being swallowed into "empty text → empty LLM payload".
+    if (pdfBuffer.byteLength > maxBytes) {
+      throw new PageTooLargeError(
+        `PDF body (${pdfBuffer.byteLength} bytes) exceeds size cap (${maxBytes} bytes)`
+      );
+    }
     if (pdfExtract) {
-      // Size cap is checked OUTSIDE the try so it surfaces as a typed error
-      // instead of being swallowed into "empty text → empty LLM payload".
-      const buffer = await response.arrayBuffer();
-      if (buffer.byteLength > maxBytes) {
-        throw new PageTooLargeError(
-          `PDF body (${buffer.byteLength} bytes) exceeds size cap (${maxBytes} bytes)`
-        );
-      }
       try {
-        readableText = await pdfExtract(buffer);
+        readableText = await pdfExtract(pdfBuffer);
       } catch {
         // Graceful: leave readableText empty on genuine parse failure
         // (corrupt PDF etc.) so downstream falls back to OG/baseline rather
@@ -253,7 +284,7 @@ export async function fetchPage(input: FetchPageInput): Promise<FetchPageResult>
     };
   }
 
-  const html = await response.text();
+  if (html === undefined) html = '';
   if (html.length > maxBytes) {
     throw new PageTooLargeError(
       `HTML body (${html.length} bytes) exceeds size cap (${maxBytes} bytes)`

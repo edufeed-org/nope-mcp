@@ -126,21 +126,20 @@ function vocabLookupsFromSnapshots(
     const byKey = new Map<string, { id: string; prefLabel: string }>();
     lookups[field] = { byKey };
     if (!snap) continue;
+    // One pass: canonical id and alias per concept; an alias is used only
+    // when it is unique in the field and does not equal any concept id.
+    const resolved = snap.concepts.map((c) => ({ c, id: canonicalConceptId(c.id), alias: conceptAlias(c.id) }));
+    const ids = new Set(resolved.flatMap((r) => [r.c.id, r.id]));
     const aliasCount = new Map<string, number>();
-    for (const c of snap.concepts) {
-      const a = conceptAlias(c.id);
-      if (a) aliasCount.set(a, (aliasCount.get(a) ?? 0) + 1);
-    }
+    for (const r of resolved) if (r.alias) aliasCount.set(r.alias, (aliasCount.get(r.alias) ?? 0) + 1);
     const llmConcepts: VocabConcept[] = [];
-    for (const c of snap.concepts) {
-      const id = canonicalConceptId(c.id);
+    for (const { c, id, alias } of resolved) {
       const entry = { id, prefLabel: c.prefLabel };
       byKey.set(c.id, entry);
       byKey.set(id, entry);
-      const a = conceptAlias(c.id);
-      const useAlias = a !== undefined && aliasCount.get(a) === 1;
-      if (useAlias) byKey.set(a, entry);
-      llmConcepts.push({ ...c, id: useAlias ? a : c.id });
+      const useAlias = alias !== undefined && aliasCount.get(alias) === 1 && !ids.has(alias);
+      if (useAlias) byKey.set(alias, entry);
+      llmConcepts.push({ ...c, id: useAlias ? alias : c.id });
     }
     llmSnapshots[field] = { ...snap, concepts: llmConcepts };
   }
@@ -162,7 +161,7 @@ function normalizeConceptArrays(
     const value = out[field];
     if (!Array.isArray(value)) continue;
     out[field] = value.map((entry) =>
-      typeof entry === 'string' ? { id: entry } : entry
+      typeof entry === 'string' || typeof entry === 'number' ? { id: String(entry) } : entry
     );
   }
   return out;
@@ -256,9 +255,10 @@ function filterAndEnrichByVocab(
     const seen = new Set<string>();
     for (const entry of value) {
       if (!entry || typeof entry !== 'object') continue;
-      const id = (entry as { id?: unknown }).id;
+      const raw = (entry as { id?: unknown }).id;
+      const id = typeof raw === 'number' ? String(raw) : raw;
       if (typeof id !== 'string') continue;
-      const hit = byKey.get(id) ?? byKey.get(canonicalConceptId(id));
+      const hit = byKey.get(id) ?? byKey.get(canonicalConceptId(id)) ?? byKey.get(id.trim());
       if (hit === undefined || seen.has(hit.id)) continue;
       seen.add(hit.id);
       filtered.push({ id: hit.id, prefLabel: hit.prefLabel });

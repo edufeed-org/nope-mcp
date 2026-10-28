@@ -42,7 +42,7 @@ and no command embeds one.
 - Relay statistics and info
 
 ### URL → Form-Prefill Metadata
-- `extract_metadata(url, variant, skosSchemes?)` — fetch a public web page and produce a complete AMB/EKW form-prefill payload. Returns OpenGraph fallback by default; with `ANTHROPIC_API_KEY` set, an LLM grounded in the configured SKOS vocabularies fills SKOS-typed fields with concept IDs and per-field evidence quotes.
+- `extract_metadata(url | urls, variant, skosSchemes?)` — fetch one or more public web pages/PDFs and produce a complete AMB/EKW form-prefill payload. Returns OpenGraph fallback by default; with `ANTHROPIC_API_KEY` set, an LLM grounded in the configured SKOS vocabularies fills SKOS-typed fields with concept IDs and per-field evidence quotes. Concept ids follow NIP-VOCAB: the concept's `i` URI when it has one, else the canonical relay-less `nostr:naddr1…` of its kind-39738 event (never the raw `39738:<pubkey>:<d>`). With several `urls` the first is authoritative; later sources that cannot be used (office documents and other non-HTML/PDF bodies → `unsupported_type`, fetch failures → `fetch_failed`, bodies over the size cap → `page_too_large`) are skipped and listed in `skippedSources: [{url, code, reason}]`. A failing first source fails the call with the same codes.
 - Library export: `import { extractMetadata } from 'nope-mcp/lib'` for direct in-process use (e.g. SvelteKit server routes).
 
 ### Signing & Publishing
