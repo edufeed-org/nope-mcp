@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BIBLE_BOOKS, normalizeBibleReference } from '../../src/lib/bibleReference.js';
+import { BIBLE_BOOKS, isBareBookName, normalizeBibleReference } from '../../src/lib/bibleReference.js';
 
 describe('normalizeBibleReference (Loccum guidelines)', () => {
   it('keeps the Passau handout examples verbatim', () => {
@@ -84,3 +84,13 @@ describe('normalizeBibleReference (Loccum guidelines)', () => {
     }
   });
 });
+
+describe('isBareBookName', () => {
+  it('recognises bare book names in abbreviation and alias form', () => {
+    for (const bare of ['Mt', 'Joh', '1 Kor', 'Apg', 'Gen']) expect(isBareBookName(bare)).toBe(true);
+  });
+  it('is false for references and free text', () => {
+    for (const ok of ['Mt 5,1-12', 'Ps 23', '1 Kor 13', 'Pfingstgeschichte', '']) expect(isBareBookName(ok)).toBe(false);
+  });
+});
+

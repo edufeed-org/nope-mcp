@@ -138,3 +138,13 @@ export function normalizeBibleReference(text: string): string {
   }
   return out.join('; ');
 }
+
+/**
+ * True when the text is nothing but a book name — "Mt", "Joh", "1 Kor",
+ * "Apostelgeschichte" — i.e. not a reference at all. Free text that is not a
+ * known book ("Pfingstgeschichte") is not a bare book name and passes through.
+ */
+export function isBareBookName(text: string): boolean {
+  const k = bookKey(text);
+  return k !== '' && ABBR_BY_KEY.has(k);
+}

@@ -104,7 +104,7 @@ describe('loadVocabularyFromNaddr', () => {
   it('decodes the naddr and returns scheme + concepts', async () => {
     const fake = new FakeRelay([SCHEME_EVENT, TEXT_CONCEPT, VIDEO_CONCEPT]);
     const vocab = await loadVocabularyFromNaddr(NADDR, { relayClient: fake });
-    expect(vocab.scheme.id).toContain(D);
+    expect(vocab.scheme.id).toBe('nostr:' + nip19.naddrEncode({ kind: 39737, pubkey: PUB, identifier: D, relays: [] }));
     expect(vocab.concepts.size).toBe(2);
   });
 
@@ -133,10 +133,12 @@ describe('loadVocabularyFromNaddr', () => {
     expect([...vocab.concepts.keys()]).toContain('https://w3id.org/kim/hcrt/text');
   });
 
-  it('falls back to the Nostr coord when no externalUri', async () => {
+  it('falls back to the canonical nostr:naddr when no externalUri', async () => {
     const fake = new FakeRelay([SCHEME_EVENT, CUSTOM_CONCEPT]);
     const vocab = await loadVocabularyFromNaddr(NADDR, { relayClient: fake });
-    expect([...vocab.concepts.keys()]).toContain(`39738:${PUB}:custom`);
+    expect([...vocab.concepts.keys()]).toContain(
+      'nostr:' + nip19.naddrEncode({ kind: 39738, pubkey: PUB, identifier: 'custom', relays: [] })
+    );
   });
 
   it('builds prefLabel as a LocalizedString map', async () => {
@@ -158,3 +160,30 @@ describe('loadVocabularyFromNaddr', () => {
     await expect(loadVocabularyFromNaddr(NADDR, { relayClient: fake })).rejects.toThrow();
   });
 });
+
+describe('loadVocabularyFromNaddr — canonical identifiers (NIP-VOCAB)', () => {
+  it('identifies a concept without an i tag by its relay-less nostr:naddr and keeps d as notation', async () => {
+    const relay = new FakeRelay([SCHEME_EVENT, TEXT_CONCEPT, VIDEO_CONCEPT, CUSTOM_CONCEPT]);
+    const vocab = await loadVocabularyFromNaddr(NADDR, { relayClient: relay });
+    const expected = 'nostr:' + nip19.naddrEncode({ kind: 39738, pubkey: PUB, identifier: 'custom', relays: [] });
+    const custom = vocab.concepts.get(expected);
+    expect(custom).toBeDefined();
+    expect(custom?.notation).toEqual(['custom']);
+    expect([...vocab.concepts.keys()].some((k) => k.startsWith('39738:'))).toBe(false);
+    const decoded = nip19.decode(expected.slice('nostr:'.length));
+    expect(decoded.type).toBe('naddr');
+    expect((decoded.data as { relays?: string[] }).relays ?? []).toEqual([]);
+  });
+  it('keeps the i URI as id for concepts that have one, with d as notation', async () => {
+    const relay = new FakeRelay([SCHEME_EVENT, TEXT_CONCEPT]);
+    const vocab = await loadVocabularyFromNaddr(NADDR, { relayClient: relay });
+    const text = vocab.concepts.get('https://w3id.org/kim/hcrt/text');
+    expect(text?.notation).toEqual(['text']);
+  });
+  it('identifies the scheme by its relay-less nostr:naddr', async () => {
+    const relay = new FakeRelay([SCHEME_EVENT, TEXT_CONCEPT]);
+    const vocab = await loadVocabularyFromNaddr(NADDR, { relayClient: relay });
+    expect(vocab.scheme.id).toBe('nostr:' + nip19.naddrEncode({ kind: 39737, pubkey: PUB, identifier: D, relays: [] }));
+  });
+});
+

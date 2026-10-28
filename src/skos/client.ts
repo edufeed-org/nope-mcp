@@ -6,6 +6,7 @@ import type { ParsedVocabulary, RawSkohubVocabulary, SKOSConcept } from './types
 import { parseVocabulary, searchConcepts, getLabel, type SearchField, DEFAULT_SEARCH_FIELDS } from './parser.js';
 import { vocabularyCache } from './cache.js';
 import { loadVocabularyFromNaddr, type NostrVocabLoaderOptions } from './nostr-loader.js';
+import { canonicalConceptId } from '../lib/conceptId.js';
 
 const FETCH_TIMEOUT = 10000; // 10 seconds
 
@@ -20,18 +21,25 @@ export async function getVocabulary(
   uri: string,
   opts: NostrVocabLoaderOptions = {}
 ): Promise<ParsedVocabulary> {
+  // A Nostr scheme may arrive as `naddr1…`, `nostr:naddr1…` (the canonical
+  // id the loader emits) or with relay hints; cache under the relay-less
+  // naddr so every spelling shares one entry, but load with the hints.
+  const nostrUri = canonicalConceptId(uri);
+  const key = nostrUri.startsWith('nostr:naddr1') ? nostrUri.slice('nostr:'.length) : uri;
+  const naddr = uri.startsWith('nostr:') ? uri.slice('nostr:'.length) : uri;
+
   // Check cache first
-  const cached = vocabularyCache.get(uri);
+  const cached = vocabularyCache.get(key);
   if (cached) {
     return cached;
   }
 
-  const vocabulary = uri.startsWith('naddr1')
-    ? await loadVocabularyFromNaddr(uri, opts)
+  const vocabulary = naddr.startsWith('naddr1')
+    ? await loadVocabularyFromNaddr(naddr, opts)
     : await fetchVocabulary(uri);
 
   // Cache the result
-  vocabularyCache.set(uri, vocabulary);
+  vocabularyCache.set(key, vocabulary);
 
   return vocabulary;
 }
@@ -42,6 +50,11 @@ export async function getVocabulary(
 export async function getConcept(
   conceptUri: string
 ): Promise<SKOSConcept | undefined> {
+  // A Nostr concept id (nostr:naddr1… / 39738:…) does not name its scheme;
+  // it can only be resolved through its vocabulary, not fetched on its own.
+  if (/^(nostr:|naddr1|\d+:[0-9a-f]{64}:)/i.test(conceptUri)) {
+    return undefined;
+  }
   // Derive the scheme URI from the concept URI
   // Most SKOS URIs follow pattern: {schemeUri}/{conceptId}
   // We need to try fetching the scheme and finding the concept

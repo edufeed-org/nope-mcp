@@ -23,6 +23,7 @@
  */
 
 import { nip19 } from 'nostr-tools';
+import { canonicalNostrUri } from '../lib/conceptId.js';
 import type { Filter, NostrEvent } from 'nostr-tools';
 import { AMBRelayClient } from '../relay/client.js';
 import type {
@@ -65,11 +66,11 @@ function tagsToLocalizedStringArray(tags: string[][], name: string): LocalizedSt
   return out;
 }
 
-function buildScheme(event: NostrEvent, schemeCoord: string): SKOSConceptScheme {
+function buildScheme(event: NostrEvent, identifier: string): SKOSConceptScheme {
   const title = tagsToLocalizedString(event.tags, 'prefLabel');
   const description = tagsToLocalizedString(event.tags, 'description');
   return {
-    id: schemeCoord,
+    id: canonicalNostrUri(SCHEME_KIND, event.pubkey, identifier),
     type: 'ConceptScheme',
     title,
     ...(Object.keys(description).length > 0 ? { description } : {}),
@@ -80,14 +81,18 @@ function buildScheme(event: NostrEvent, schemeCoord: string): SKOSConceptScheme 
 function buildConcept(event: NostrEvent): SKOSConcept | null {
   const d = event.tags.find((t) => t[0] === 'd')?.[1];
   if (!d) return null;
+  // NIP-VOCAB: the `i` URI when the concept has one, else the canonical
+  // relay-less nostr:naddr of the event. The `d` is kept as notation (the
+  // identifier within the scheme) — short enough for an LLM to echo.
   const externalUri = event.tags.find((t) => t[0] === 'i')?.[1];
-  const id = externalUri ?? `${event.kind}:${event.pubkey}:${d}`;
+  const id = externalUri ?? canonicalNostrUri(event.kind, event.pubkey, d);
   const prefLabel = tagsToLocalizedString(event.tags, 'prefLabel');
   if (Object.keys(prefLabel).length === 0) return null;
   const altLabel = tagsToLocalizedStringArray(event.tags, 'altLabel');
   return {
     id,
     type: 'Concept',
+    notation: [d],
     prefLabel,
     ...(altLabel.length > 0 ? { altLabel } : {})
   };
@@ -134,7 +139,7 @@ export async function loadVocabularyFromNaddr(
     throw new Error(`ConceptScheme event not found for ${schemeCoord}`);
   }
 
-  const scheme = buildScheme(schemeEvent, schemeCoord);
+  const scheme = buildScheme(schemeEvent, identifier);
   const concepts = new Map<string, SKOSConcept>();
   for (const e of conceptEvents) {
     const c = buildConcept(e);

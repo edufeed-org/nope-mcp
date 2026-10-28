@@ -282,3 +282,56 @@ describe('fetchPage size cap', () => {
     expect(page.readableText).toBe('');
   });
 });
+
+describe('fetchPage — content types', () => {
+  it('rejects binary office documents with code unsupported_type instead of parsing them as HTML', async () => {
+    const fetchFn = async () =>
+      new Response(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0]), {
+        status: 200,
+        headers: { 'content-type': 'application/vnd.ms-powerpoint' }
+      });
+    await expect(fetchPage({ url: 'https://example.org/M1.PPT', fetchFn })).rejects.toMatchObject({
+      code: 'unsupported_type'
+    });
+  });
+  it('treats application/octet-stream with a .pdf URL as a PDF', async () => {
+    const fetchFn = async () =>
+      new Response(new Uint8Array([0x25, 0x50, 0x44, 0x46]), {
+        status: 200,
+        headers: { 'content-type': 'application/octet-stream' }
+      });
+    const page = await fetchPage({ url: 'https://example.org/x.PDF', fetchFn, pdfExtract: async () => 'pdf text' });
+    expect(page.contentType).toBe('pdf');
+    expect(page.readableText).toBe('pdf text');
+  });
+  it('still treats a missing content-type as HTML', async () => {
+    const fetchFn = async () => new Response('<html><title>T</title></html>', { status: 200 });
+    const page = await fetchPage({ url: 'https://example.org/', fetchFn });
+    expect(page.title).toBe('T');
+  });
+});
+
+describe('fetchPage — PDF detection by sniffing', () => {
+  const pdfBytes = new TextEncoder().encode('%PDF-1.7 fake');
+  it('treats application/x-pdf as a PDF', async () => {
+    const fetchFn = async () => new Response(pdfBytes, { status: 200, headers: { 'content-type': 'application/x-pdf' } });
+    const page = await fetchPage({ url: 'https://example.org/download?id=1', fetchFn, pdfExtract: async () => 'pdf text' });
+    expect(page.contentType).toBe('pdf');
+  });
+  it('sniffs %PDF- in an application/octet-stream body on an extension-less URL', async () => {
+    const fetchFn = async () => new Response(pdfBytes, { status: 200, headers: { 'content-type': 'application/octet-stream' } });
+    const page = await fetchPage({ url: 'https://example.org/blob/0123abcd', fetchFn, pdfExtract: async () => 'pdf text' });
+    expect(page.contentType).toBe('pdf');
+    expect(page.readableText).toBe('pdf text');
+  });
+  it('rejects an octet-stream body that is not a PDF with unsupported_type', async () => {
+    const fetchFn = async () => new Response(new Uint8Array([0x50, 0x4b, 0x03, 0x04]), { status: 200, headers: { 'content-type': 'application/octet-stream' } });
+    await expect(fetchPage({ url: 'https://example.org/blob/zip', fetchFn })).rejects.toMatchObject({ code: 'unsupported_type' });
+  });
+  it('sniffs a PDF even without a content-type', async () => {
+    const fetchFn = async () => new Response(pdfBytes, { status: 200 });
+    const page = await fetchPage({ url: 'https://example.org/x', fetchFn, pdfExtract: async () => 'pdf text' });
+    expect(page.contentType).toBe('pdf');
+  });
+});
+

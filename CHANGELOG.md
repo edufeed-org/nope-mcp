@@ -6,6 +6,42 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-28
+
+### Changed
+
+- **Canonical NIP-VOCAB concept identifiers.** Concepts loaded from Nostr
+  (`naddr1…` vocabularies) are now identified by the canonical relay-less
+  `nostr:naddr1…` of their kind-39738 event (NIP-19/NIP-21) when they have no
+  `i` URI, and the scheme by the relay-less naddr of its kind-39737 event.
+  The raw coordinate `39738:<pubkey>:<d>` is no longer emitted. Inputs in the
+  raw, legacy `nostr:<kind>:<pubkey>:<d>` and hinted-naddr forms are still
+  accepted by `extract_metadata` and mapped to the canonical id. The
+  concept's `d` is kept as SKOS `notation`.
+- `extract_metadata` shows the model short aliases (the `d`) for Nostr
+  concepts instead of bech32 strings and maps echoed aliases, canonical and
+  legacy ids back to canonical ids; duplicates collapse.
+- Bible references: the prompt asks for at least a chapter, and bare book
+  names ("Mt", "Joh") are dropped from `bibleReferences` after the call;
+  other free text still passes through.
+
+### Fixed
+
+- Multi-source `extract_metadata` no longer fails the whole call when a
+  source after the first cannot be used: unsupported content types (office
+  documents, images), fetch failures and oversized bodies are skipped and
+  reported in a new optional `skippedSources: [{url, code, reason}]`. The
+  first source stays authoritative and still fails the call.
+- `fetchPage` rejects non-HTML, non-PDF bodies with `code: 'unsupported_type'`
+  instead of parsing binary as HTML; PDFs are recognised by declared type
+  (`application/pdf`, `application/x-pdf`) or by sniffing `%PDF-` in
+  octet-stream/download bodies and bodies without a content-type.
+- `getVocabulary` accepts the canonical `nostr:naddr1…` scheme id (and
+  hinted naddrs) and caches all spellings under one entry; `getConcept`
+  returns undefined for Nostr concept ids instead of trying to fetch them.
+- Numeric concept aliases ("1", "2" for Klassenstufen) are accepted when
+  the model emits them as JSON numbers.
+
 ## [0.4.0] - 2026-10-02
 
 ### Added

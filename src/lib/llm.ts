@@ -200,7 +200,9 @@ const BIBLE_REFERENCE_GUIDE = [
   '  digit + space, no space after the comma — e.g. "Mt 5,1-12", "Apg 2,1-12",',
   '  "1 Kor 13,1-13", "Gen 2,4-7", "Ps 23". Convert full book names',
   '  ("Apostelgeschichte", "1. Mose") and other abbreviations ("Mt.", "1 Mo",',
-  '  "Hiob") to this form. The evidence quote stays verbatim from the source.'
+  '  "Hiob") to this form. Always include at least the chapter ("Ps 23",',
+  '  "Mk 4,35-41"); never emit a bare book name such as "Mt" — leave the field',
+  '  out instead. The evidence quote stays verbatim from the source.'
 ];
 
 const KONFI_FIELD_GUIDE = [
