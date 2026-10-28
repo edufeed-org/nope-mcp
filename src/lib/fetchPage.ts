@@ -55,6 +55,19 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  * from generic fetch / parse failures — otherwise oversized PDFs masquerade
  * as LLM failures to the user.
  */
+/**
+ * Thrown by fetchPage for bodies it cannot read (office documents, images,
+ * archives …). Carries `code: 'unsupported_type'` so multi-source extraction
+ * can skip the source instead of feeding binary garbage to the LLM.
+ */
+export class UnsupportedContentTypeError extends Error {
+  readonly code = 'unsupported_type' as const;
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnsupportedContentTypeError';
+  }
+}
+
 export class PageTooLargeError extends Error {
   /** Stable machine-readable code; consumers match on this, not on .message. */
   readonly code = 'page_too_large' as const;
@@ -195,7 +208,20 @@ export async function fetchPage(input: FetchPageInput): Promise<FetchPageResult>
   }
 
   const contentTypeHeader = response.headers.get('content-type') || '';
-  const isPdf = contentTypeHeader.includes('application/pdf');
+  const mime = contentTypeHeader.split(';')[0].trim().toLowerCase();
+  const isPdf =
+    mime === 'application/pdf' ||
+    (mime === 'application/octet-stream' && /\.pdf$/i.test(parsed.pathname));
+  // Readable bodies: HTML/XHTML/plain text (and an absent content-type, as
+  // before). Everything else — PowerPoint, Word, images, zips — cannot be
+  // turned into readable text here and is reported as unsupported.
+  const isReadable =
+    mime === '' || mime.startsWith('text/') || mime === 'application/xhtml+xml' || mime === 'application/xml';
+  if (!isPdf && !isReadable) {
+    throw new UnsupportedContentTypeError(
+      `unsupported content type ${mime || '(none)'} for ${parsed.toString()}`
+    );
+  }
 
   if (isPdf) {
     let readableText = '';

@@ -437,3 +437,14 @@ describe('llmEnrich', () => {
     });
   });
 });
+
+describe('llmEnrich — bible references need a chapter', () => {
+  it.each(['ekw', 'konfi'] as const)('tells the model never to emit a bare book name under variant=%s', async (variant) => {
+    const { client, calls } = stubClient({ payload: {}, evidence: {} });
+    await llmEnrich({ client, variant, page: { ogTags: {}, readableText: 'x' }, vocabs: {} });
+    const params = calls[0] as { system: string | Array<{ text?: string }> };
+    const systemText = typeof params.system === 'string' ? params.system : params.system.map((s) => s.text ?? '').join(' ');
+    expect(systemText).toMatch(/never emit a bare book name/i);
+  });
+});
+

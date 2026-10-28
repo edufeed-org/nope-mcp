@@ -136,7 +136,13 @@ export const extractMetadataResult = z.object({
   baseline: z.object({
     og: z.record(z.string(), z.unknown()).optional(),
     amb: z.record(z.string(), z.unknown()).optional()
-  })
+  }),
+  // Multi-source extraction: sources after the first that could not be used
+  // (unsupported content type, fetch failure, too large). Absent when every
+  // source contributed.
+  skippedSources: z
+    .array(z.object({ url: z.string(), code: z.string(), reason: z.string() }))
+    .optional()
 });
 
 export type ExtractMetadataResult = z.infer<typeof extractMetadataResult>;

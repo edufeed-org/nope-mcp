@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { nip19 } from 'nostr-tools';
 import { extractMetadata } from '../../src/lib/extractMetadata.js';
+import { canonicalConceptId } from '../../src/lib/conceptId.js';
 import type { AnthropicLike } from '../../src/lib/llm.js';
 import { vocabularyCache } from '../../src/skos/cache.js';
 import type { ParsedVocabulary } from '../../src/skos/types.js';
@@ -540,12 +542,13 @@ describe('extractMetadata — production LLM-output shape', () => {
     expect(result.payload.learningResourceType).toEqual([
       { id: 'https://w3id.org/kim/hcrt/worksheet', prefLabel: 'Arbeitsblatt' }
     ]);
+    // Legacy coordinates in the vocab and in the model output both come out canonical.
     expect(result.payload.gradeLevels).toEqual([
-      { id: `39738:${NIP_VOCAB_PUBKEY}:1`, prefLabel: 'Jahrgang 1' },
-      { id: `39738:${NIP_VOCAB_PUBKEY}:2`, prefLabel: 'Jahrgang 2' }
+      { id: canonicalConceptId(`39738:${NIP_VOCAB_PUBKEY}:1`), prefLabel: 'Jahrgang 1' },
+      { id: canonicalConceptId(`39738:${NIP_VOCAB_PUBKEY}:2`), prefLabel: 'Jahrgang 2' }
     ]);
     expect(result.payload.schoolTypes).toEqual([
-      { id: `39738:${NIP_VOCAB_PUBKEY}:grundschule`, prefLabel: 'Grundschule' }
+      { id: canonicalConceptId(`39738:${NIP_VOCAB_PUBKEY}:grundschule`), prefLabel: 'Grundschule' }
     ]);
     expect(result.evidence.learningResourceType).toBe('M4 Rollenspiel');
     expect(result.evidence.gradeLevels).toBe('Jahrgang 1 und 2');
@@ -766,3 +769,130 @@ describe('extractMetadata — output shape', () => {
     expect(extractMetadataResult.safeParse(llmRes).success).toBe(true);
   });
 });
+
+describe('extractMetadata — Nostr concept identifiers', () => {
+  const PUB = 'd2689e2f41dabfba953da26655a94ce2aa4e029c383ee921c6a4deafab99a612';
+  const canon = (d: string) => 'nostr:' + nip19.naddrEncode({ kind: 39738, pubkey: PUB, identifier: d, relays: [] });
+  const SCHEME_NADDR = nip19.naddrEncode({ kind: 39737, pubkey: PUB, identifier: 'didaktisches-konzept', relays: [] });
+  const didaktik: ParsedVocabulary = {
+    scheme: { id: 'nostr:' + SCHEME_NADDR, type: 'ConceptScheme', title: { de: 'Didaktisches Konzept' }, hasTopConcept: [] },
+    concepts: new Map([
+      [canon('theologisieren'), { id: canon('theologisieren'), type: 'Concept', notation: ['theologisieren'], prefLabel: { de: 'Theologisieren' } }],
+      [canon('biblisches-lernen'), { id: canon('biblisches-lernen'), type: 'Concept', notation: ['biblisches-lernen'], prefLabel: { de: 'Biblisches Lernen' } }]
+    ])
+  };
+  beforeEach(() => {
+    vocabularyCache.clear();
+    vocabularyCache.set(SCHEME_NADDR, didaktik);
+  });
+
+  it('shows the LLM short aliases (the d) for Nostr concepts and maps an echoed alias back to the canonical id', async () => {
+    const llm = stubLlm({ didacticConcepts: [{ id: 'theologisieren' }] }, { didacticConcepts: 'Theologisieren mit Kindern' });
+    const createSpy = vi.spyOn(llm.messages, 'create');
+    const res = await extractMetadata({
+      url: 'https://example.org/p',
+      variant: 'ekw',
+      skosSchemes: { didacticConcepts: SCHEME_NADDR },
+      fetchFn: fakeHtml('<html><title>P</title><body><p>Theologisieren mit Kindern</p></body></html>'),
+      llmClient: llm
+    });
+    const vocabText = (createSpy.mock.calls[0][0] as { messages: Array<{ content: Array<{ text: string }> }> }).messages[0].content[0].text;
+    expect(vocabText).toContain('"id": "theologisieren"');
+    expect(vocabText).not.toContain(canon('theologisieren').slice('nostr:'.length)); // no bech32 concept ids shown to the model
+    expect(res.payload.didacticConcepts).toEqual([{ id: canon('theologisieren'), prefLabel: 'Theologisieren' }]);
+    expect(res.evidence.didacticConcepts).toBe('Theologisieren mit Kindern');
+  });
+
+  it('accepts legacy and canonical ids from the model and emits canonical ids', async () => {
+    const llm = stubLlm(
+      { didacticConcepts: [{ id: `39738:${PUB}:biblisches-lernen` }, { id: `nostr:39738:${PUB}:theologisieren` }, { id: canon('theologisieren') }] },
+      {}
+    );
+    const res = await extractMetadata({
+      url: 'https://example.org/p',
+      variant: 'ekw',
+      skosSchemes: { didacticConcepts: SCHEME_NADDR },
+      fetchFn: fakeHtml('<html><title>P</title></html>'),
+      llmClient: llm
+    });
+    expect(res.payload.didacticConcepts).toEqual([
+      { id: canon('biblisches-lernen'), prefLabel: 'Biblisches Lernen' },
+      { id: canon('theologisieren'), prefLabel: 'Theologisieren' }
+    ]);
+  });
+});
+
+describe('extractMetadata — multi-source robustness', () => {
+  const htmlFor = (url: string) =>
+    new Response(`<html><title>${url}</title><body><p>text of ${url}</p></body></html>`, { status: 200, headers: { 'content-type': 'text/html' } });
+  const fetchMixed = async (input: string | URL | Request) => {
+    const u = String(input);
+    if (u.endsWith('.PPT')) return new Response(new Uint8Array(4), { status: 200, headers: { 'content-type': 'application/vnd.ms-powerpoint' } });
+    if (u.endsWith('/gone')) return new Response('nope', { status: 404, headers: { 'content-type': 'text/html' } });
+    return htmlFor(u);
+  };
+
+  it('skips sources that fail or are unsupported, reports them, and still enriches from the rest', async () => {
+    const llm = stubLlm({ name: 'P' }, {});
+    const createSpy = vi.spyOn(llm.messages, 'create');
+    const res = await extractMetadata({
+      urls: ['https://example.org/page', 'https://example.org/M1.PPT', 'https://example.org/gone', 'https://example.org/second'],
+      variant: 'ekw',
+      fetchFn: fetchMixed as unknown as typeof fetch,
+      llmClient: llm
+    });
+    expect(res.source).toBe('llm-enriched');
+    expect(res.skippedSources).toEqual([
+      { url: 'https://example.org/M1.PPT', code: 'unsupported_type', reason: expect.stringContaining('application/vnd.ms-powerpoint') },
+      { url: 'https://example.org/gone', code: 'fetch_failed', reason: expect.stringContaining('404') }
+    ]);
+    const pageText = (createSpy.mock.calls[0][0] as { messages: Array<{ content: Array<{ text: string }> }> }).messages[0].content[1].text;
+    expect(pageText).toContain('=== Source 1: https://example.org/page ===');
+    expect(pageText).toContain('=== Source 2: https://example.org/second ===');
+    expect(pageText).not.toContain('M1.PPT');
+  });
+
+  it('still fails when the first (authoritative) source cannot be fetched', async () => {
+    await expect(
+      extractMetadata({
+        urls: ['https://example.org/gone', 'https://example.org/second'],
+        variant: 'ekw',
+        fetchFn: fetchMixed as unknown as typeof fetch,
+        llmClient: stubLlm({}, {})
+      })
+    ).rejects.toThrow(/404/);
+  });
+
+  it('omits skippedSources when every source was used', async () => {
+    const res = await extractMetadata({
+      urls: ['https://example.org/page', 'https://example.org/second'],
+      variant: 'ekw',
+      fetchFn: fetchMixed as unknown as typeof fetch,
+      llmClient: stubLlm({ name: 'P' }, {})
+    });
+    expect(res.skippedSources).toBeUndefined();
+  });
+});
+
+describe('extractMetadata — bible references need a chapter', () => {
+  it('drops bare book names and keeps real references', async () => {
+    const res = await extractMetadata({
+      url: 'https://example.org/p',
+      variant: 'ekw',
+      fetchFn: fakeHtml('<html><title>P</title></html>'),
+      llmClient: stubLlm({ bibleReferences: ['Mt', 'Mk 4,35-41', 'Lk', '1. Kor 13,1-13', 'Ps 23', '1 Kor', 'Pfingstgeschichte'] }, { bibleReferences: 'x' })
+    });
+    expect(res.payload.bibleReferences).toEqual(['Mk 4,35-41', '1 Kor 13,1-13', 'Ps 23', 'Pfingstgeschichte']);
+  });
+  it('removes the field and its evidence when only bare book names were suggested', async () => {
+    const res = await extractMetadata({
+      url: 'https://example.org/p',
+      variant: 'ekw',
+      fetchFn: fakeHtml('<html><title>P</title></html>'),
+      llmClient: stubLlm({ bibleReferences: ['Mt', 'Joh'] }, { bibleReferences: 'x' })
+    });
+    expect(res.payload.bibleReferences).toBeUndefined();
+    expect(res.evidence.bibleReferences).toBeUndefined();
+  });
+});
+

@@ -282,3 +282,32 @@ describe('fetchPage size cap', () => {
     expect(page.readableText).toBe('');
   });
 });
+
+describe('fetchPage — content types', () => {
+  it('rejects binary office documents with code unsupported_type instead of parsing them as HTML', async () => {
+    const fetchFn = async () =>
+      new Response(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0]), {
+        status: 200,
+        headers: { 'content-type': 'application/vnd.ms-powerpoint' }
+      });
+    await expect(fetchPage({ url: 'https://example.org/M1.PPT', fetchFn })).rejects.toMatchObject({
+      code: 'unsupported_type'
+    });
+  });
+  it('treats application/octet-stream with a .pdf URL as a PDF', async () => {
+    const fetchFn = async () =>
+      new Response(new Uint8Array([0x25, 0x50, 0x44, 0x46]), {
+        status: 200,
+        headers: { 'content-type': 'application/octet-stream' }
+      });
+    const page = await fetchPage({ url: 'https://example.org/x.PDF', fetchFn, pdfExtract: async () => 'pdf text' });
+    expect(page.contentType).toBe('pdf');
+    expect(page.readableText).toBe('pdf text');
+  });
+  it('still treats a missing content-type as HTML', async () => {
+    const fetchFn = async () => new Response('<html><title>T</title></html>', { status: 200 });
+    const page = await fetchPage({ url: 'https://example.org/', fetchFn });
+    expect(page.title).toBe('T');
+  });
+});
+
