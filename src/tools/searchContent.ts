@@ -28,8 +28,8 @@ const RELAY_MAX_LIMIT = 250;
  * licenseFilter (narrowed to the server's licenseFilterMax ceiling) drops
  * learning resources (30142) outside the requested tier; every other kind
  * passes unfiltered. A metadata-only resource never keeps a snippet/page/
- * heading, even if a 21142 event arrived for it (defence in depth — the
- * indexer should already withhold fulltext for it).
+ * heading/score/sourceUrl, even if a 21142 event arrived for it (defence in
+ * depth — the indexer should already withhold fulltext for it).
  */
 export async function runContentSearch(
   client: Pick<AMBRelayClient, 'queryEvents'>,
@@ -79,6 +79,8 @@ export async function runContentSearch(
       delete r.snippet;
       delete r.page;
       delete r.heading;
+      delete r.score;
+      delete r.sourceUrl;
     }
   }
 

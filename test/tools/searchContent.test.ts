@@ -172,14 +172,14 @@ describe('runContentSearch license tiers on search_content results (B3)', () => 
     const ncndSnip = evt(
       21142,
       'snip-ncnd1',
-      [['e', 'ncnd1'], ['k', '30142'], ['score', '0.7'], ['page', '3'], ['heading', 'Intro']],
+      [['e', 'ncnd1'], ['k', '30142'], ['score', '0.7'], ['page', '3'], ['heading', 'Intro'], ['source_url', 'https://ex.org/ncnd']],
       'passage NCND'
     );
     const unlicensed = evt(30142, 'none1', [['d', 'none1'], ['name', 'Unlicensed Resource']]);
     const unlicensedSnip = evt(
       21142,
       'snip-none1',
-      [['e', 'none1'], ['k', '30142'], ['score', '0.6'], ['page', '1'], ['heading', 'Kapitel']],
+      [['e', 'none1'], ['k', '30142'], ['score', '0.6'], ['page', '1'], ['heading', 'Kapitel'], ['source_url', 'https://ex.org/none']],
       'passage NONE'
     );
     return [article, ncnd, ncndSnip, unlicensed, unlicensedSnip];
@@ -203,10 +203,16 @@ describe('runContentSearch license tiers on search_content results (B3)', () => 
     expect(unlicensed.snippet).toBeUndefined();
     expect(unlicensed.page).toBeUndefined();
     expect(unlicensed.heading).toBeUndefined();
+    expect(unlicensed.score).toBeUndefined();
+    expect(unlicensed.sourceUrl).toBeUndefined();
 
     expect(ncnd.accessLevel).toBe('full');
     expect(ncnd.license?.label).toBe('CC BY-NC-ND 4.0');
     expect(ncnd.snippet).toBe('passage NCND');
+    expect(ncnd.page).toBe(3);
+    expect(ncnd.heading).toBe('Intro');
+    expect(ncnd.score).toBe(0.7);
+    expect(ncnd.sourceUrl).toBe('https://ex.org/ncnd');
   });
 
   it('licenseFilter "open" returns only the article — other kinds are never filtered', async () => {

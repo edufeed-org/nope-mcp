@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   runSearchPassages, registerSearchPassagesTool, sanitizeHintRelays, makeFetchSpellEvent, makeFetchContacts,
-  MAX_HINT_RELAYS, CONTACTS_FALLBACK_RELAY,
+  MAX_HINT_RELAYS, CONTACTS_FALLBACK_RELAY, coordToNaddr,
 } from '../../src/tools/searchPassages.js';
 import { SPELL_KIND } from '../../src/spells/types.js';
 import { RelayUnreachableError } from '../../src/relay/client.js';
@@ -405,5 +405,18 @@ describe('search_passages description', () => {
 
   it('names the ceiling when it is below any', () => {
     expect(description('open')).toContain("This server limits results to licenseFilter 'open'.");
+  });
+});
+
+describe('coordToNaddr', () => {
+  const pk = 'a'.repeat(64);
+
+  it('encodes a well-formed coord', () => {
+    const naddr = coordToNaddr(`30142:${pk}:d1`, RELAY);
+    expect(naddr && nip19.decode(naddr)).toMatchObject({ type: 'naddr', data: { kind: 30142, pubkey: pk, identifier: 'd1' } });
+  });
+
+  it.each(['abc', '30142.5', '-1', '1e3', ' 30142', '0x10', '70000'])('returns undefined for non-integer or out-of-range kind %j', (kind) => {
+    expect(coordToNaddr(`${kind}:${pk}:d1`, RELAY)).toBeUndefined();
   });
 });

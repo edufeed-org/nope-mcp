@@ -92,12 +92,19 @@ function toReleasedPassage(hit: PassageHit): ReleasedPassage {
   return { ...hit, accessLevel: 'full', license: ambLicense(hit), ...attribution(hit) };
 }
 
-/** naddr for a `kind:pubkey:d` coord (d may itself contain colons); undefined when malformed. */
-function coordToNaddr(coord: string, relay: string): string | undefined {
+/**
+ * naddr for a `kind:pubkey:d` coord (d may itself contain colons); undefined
+ * when malformed — including a kind that is not a plain decimal integer in
+ * the Nostr kind range (naddrEncode would otherwise silently encode NaN,
+ * fractions or overflow as some other kind).
+ */
+export function coordToNaddr(coord: string, relay: string): string | undefined {
   const first = coord.indexOf(':');
   const second = coord.indexOf(':', first + 1);
   if (first <= 0 || second <= first) return undefined;
-  const kind = Number(coord.slice(0, first));
+  const kindStr = coord.slice(0, first);
+  const kind = Number(kindStr);
+  if (!/^\d+$/.test(kindStr) || !Number.isInteger(kind) || kind > 65535) return undefined;
   try {
     return nip19.naddrEncode({
       kind, pubkey: coord.slice(first + 1, second), identifier: coord.slice(second + 1), relays: [relay],
