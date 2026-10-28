@@ -22,11 +22,24 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
   own size cap (`maxDocumentBytes`, default 64 MiB). Fetch result
   `contentType` gains `'document'` plus `documentKind`.
 - Dependencies: `fflate`, `word-extractor`, `cfb`.
+- Library entry (`nope-mcp/lib`) exports `extractDocument`, `extractPdfText`
+  and the typed fetch errors so SvelteKit callers can enable both.
 
 ### Changed
 
-- `unsupported_type` now only covers bodies no extractor can read (images,
-  archives that are not documents, JSON, …).
+- `fetchPage` classifies every non-text body by its first bytes (PDF, zip/OLE
+  document, HTML) regardless of the declared type, rejects bodies early when
+  `content-length` exceeds the cap, stops reading at the cap, and bounds the
+  body transfer time. `unsupported_type` now only covers bodies no extractor
+  can read (images, archives that are not documents, …); a document that
+  cannot be parsed (corrupt zip, junk .doc) is reported the same way instead
+  of failing the call.
+- Hardening: zip parts are inflated only up to 64 MiB per file
+  (`page_too_large` otherwise), OOXML text matching is linear and immune to
+  empty `<w:t/>`/`<a:t/>` elements, legacy .ppt records are walked
+  iteratively with a depth limit, TextBytesAtom text is decoded as
+  Windows-1252, out-of-range numeric entities are kept literally, ODF
+  annotations and tracked changes are dropped.
 
 ## [0.5.1] - 2026-10-28
 

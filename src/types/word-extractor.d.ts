@@ -5,6 +5,6 @@ declare module 'word-extractor' {
     getFooters(): string;
   }
   export default class WordExtractor {
-    extract(input: string | Buffer | Uint8Array): Promise<Document>;
+    extract(input: string | Buffer): Promise<Document>;
   }
 }

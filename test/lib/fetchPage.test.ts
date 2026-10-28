@@ -382,3 +382,35 @@ describe('fetchPage — office documents', () => {
   });
 });
 
+describe('fetchPage — sniffing for any non-text type, early size rejection', () => {
+  const docxBytes = zipSync({ 'word/document.xml': strToU8('<w:document xmlns:w="x"><w:p><w:r><w:t>Doc</w:t></w:r></w:p></w:document>') });
+  it('reads an HTML body served with a document MIME type (login page) as HTML', async () => {
+    const fetchFn = async () => new Response('<html><title>Login</title></html>', { status: 200, headers: { 'content-type': 'application/msword' } });
+    const page = await fetchPage({ url: 'https://example.org/x.doc', fetchFn, docExtract: extractDocument });
+    expect(page.contentType).toBe('html');
+    expect(page.title).toBe('Login');
+  });
+  it('reads a document served with an unknown or vendor-prefixed type by its magic bytes', async () => {
+    for (const ct of ['application/x-vnd.oasis.opendocument.text', 'application/vnd.ms-office', 'application/x-msword', 'image/png']) {
+      const fetchFn = async () => new Response(docxBytes, { status: 200, headers: { 'content-type': ct } });
+      const page = await fetchPage({ url: 'https://example.org/x', fetchFn, docExtract: extractDocument });
+      expect(page.contentType, ct).toBe('document');
+    }
+  });
+  it('rejects a body whose content-length exceeds the cap before reading it', async () => {
+    let bodyRead = false;
+    // highWaterMark 0: no eager pre-fill, so pull() only runs when the body is actually read
+    const stream = new ReadableStream<Uint8Array>({ pull(c) { bodyRead = true; c.enqueue(new Uint8Array(1024)); } }, { highWaterMark: 0 });
+    const fetchFn = async () => new Response(stream, { status: 200, headers: { 'content-type': 'application/pdf', 'content-length': String(100 * 1024 * 1024) } });
+    await expect(fetchPage({ url: 'https://example.org/big.pdf', fetchFn, pdfExtract: async () => 'x' })).rejects.toMatchObject({ code: 'page_too_large' });
+    expect(bodyRead).toBe(false);
+  });
+  it('stops reading an unbounded body at the cap', async () => {
+    let pulls = 0;
+    const stream = new ReadableStream<Uint8Array>({ pull(c) { pulls++; c.enqueue(new Uint8Array(1024 * 1024)); } });
+    const fetchFn = async () => new Response(stream, { status: 200, headers: { 'content-type': 'application/pdf' } });
+    await expect(fetchPage({ url: 'https://example.org/endless.pdf', fetchFn, pdfExtract: async () => 'x', maxBytes: 3 * 1024 * 1024 })).rejects.toMatchObject({ code: 'page_too_large' });
+    expect(pulls).toBeLessThan(10);
+  });
+});
+

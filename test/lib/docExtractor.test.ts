@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { zipSync, strToU8 } from 'fflate';
 import * as CFB from 'cfb';
-import { detectDocument, extractDocumentText } from '../../src/lib/docExtractor.js';
+import { detectDocument, extractDocumentText, extractDocument, MAX_PART_BYTES } from '../../src/lib/docExtractor.js';
+import { existsSync, readFileSync } from 'node:fs';
 
 const buf = (u: Uint8Array): ArrayBuffer => u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength) as ArrayBuffer;
 const zip = (files: Record<string, string>) => buf(zipSync(Object.fromEntries(Object.entries(files).map(([k, v]) => [k, strToU8(v)]))));
@@ -92,3 +93,93 @@ describe('extractDocumentText', () => {
     expect(await extractDocumentText(olePpt(['Jesus beruft Simon', 'Folie 2']), 'ppt')).toBe('Jesus beruft Simon\nFolie 2');
   });
 });
+
+describe('extractDocumentText — hostile and odd input', () => {
+  const slide = (body: string) => zip({ 'ppt/slides/slide1.xml': `<p:sld xmlns:a="x" xmlns:p="y">${body}</p:sld>` });
+
+  it('empty text elements never swallow the following markup', async () => {
+    const t = await extractDocumentText(slide('<p:sp><a:p><a:r><a:rPr lang="de-DE"/><a:t/></a:r></a:p></p:sp><p:sp><a:p><a:r><a:t>Titel</a:t></a:r></a:p></p:sp>'), 'pptx');
+    expect(t).toBe('Titel');
+    const d = await extractDocumentText(zip({ 'word/document.xml': '<w:document xmlns:w="x"><w:p><w:r><w:t/></w:r></w:p><w:p><w:r><w:t>Text</w:t></w:r></w:p></w:document>' }), 'docx');
+    expect(d).toBe('Text');
+    const x = await extractDocumentText(zip({ 'xl/sharedStrings.xml': '<sst><si><t/></si><si><t>Zelle</t></si></sst>' }), 'xlsx');
+    expect(x).toBe('Zelle');
+  });
+
+  it('thousands of unclosed text openers finish quickly (linear matching)', async () => {
+    const body = '<w:p>' + '<w:t>'.repeat(20000) + 'x'.repeat(2_000_000) + '</w:p>';
+    const b = zip({ 'word/document.xml': `<w:document xmlns:w="x">${body}</w:document>` });
+    const t0 = Date.now();
+    await extractDocumentText(b, 'docx');
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
+
+  it('refuses a part that would inflate beyond the per-part cap (zip bomb) as page_too_large', async () => {
+    const huge = 'A'.repeat(MAX_PART_BYTES + 1024);
+    const b = zip({ 'word/document.xml': `<w:document xmlns:w="x"><w:p><w:r><w:t>${huge}</w:t></w:r></w:p></w:document>` });
+    await expect(extractDocumentText(b, 'docx')).rejects.toMatchObject({ code: 'page_too_large' });
+  });
+
+  it('a corrupt deflate stream surfaces as unsupported_type from extractDocument', async () => {
+    // Long repetitive text so the part is actually deflated, then damage the
+    // compressed bytes right after that entry's local header.
+    const body = '<w:document xmlns:w="x"><w:body><w:p><w:r><w:t>' + 'Zachäus auf dem Baum. '.repeat(400) + '</w:t></w:r></w:p></w:body></w:document>';
+    const z = zipSync({ '[Content_Types].xml': strToU8('<Types/>'), 'word/document.xml': strToU8(body) }, { level: 6 });
+    const u = new Uint8Array(z);
+    const name = strToU8('word/document.xml');
+    let at = -1;
+    for (let i = 0; i < u.length - name.length && at < 0; i++) {
+      if (u[i] === 0x50 && u[i + 1] === 0x4b && u[i + 2] === 0x03 && u[i + 3] === 0x04 && name.every((b, k) => u[i + 30 + k] === b)) at = i + 30 + name.length;
+    }
+    expect(at).toBeGreaterThan(0);
+    for (let i = at + 8; i < at + 48; i++) u[i] ^= 0xff;
+    await expect(extractDocument(buf(u), { mime: '', url: 'https://x/corrupt.docx' })).rejects.toMatchObject({ code: 'unsupported_type' });
+  });
+
+  it('a truncated zip is not detected as a document', () => {
+    const u = new Uint8Array(docx.slice(0, 60));
+    expect(detectDocument(buf(u), { mime: '', url: 'https://x/t.docx' })).toBeUndefined();
+  });
+
+  it('decodes cp1252 punctuation in legacy TextBytesAtom records', async () => {
+    const bytes = Buffer.from([0x84, 0x41, 0x93, 0x20, 0x96, 0x20, 0x80]); // „A“ – €
+    const h = Buffer.alloc(8); h.writeUInt16LE(0, 0); h.writeUInt16LE(0x0fa8, 2); h.writeUInt32LE(bytes.length, 4);
+    const inner = Buffer.concat([h, bytes]);
+    const ch = Buffer.alloc(8); ch.writeUInt16LE(0x0f, 0); ch.writeUInt16LE(0x03e8, 2); ch.writeUInt32LE(inner.length, 4);
+    const cfb = CFB.utils.cfb_new();
+    CFB.utils.cfb_add(cfb, '/PowerPoint Document', Buffer.concat([ch, inner]));
+    const b = buf(new Uint8Array(CFB.write(cfb, { type: 'buffer' }) as Buffer));
+    expect(await extractDocumentText(b, 'ppt')).toBe('„A“ – €');
+  });
+
+  it('keeps out-of-range or invalid numeric entities literally instead of throwing', async () => {
+    const t = await extractDocumentText(zip({ 'word/document.xml': '<w:document xmlns:w="x"><w:p><w:r><w:t>a&#x110000;b&#99999999999;c&#xD800;d</w:t></w:r></w:p></w:document>' }), 'docx');
+    expect(t).toBe('a&#x110000;b&#99999999999;c&#xD800;d');
+  });
+
+  it('drops ODF annotations and tracked changes', async () => {
+    const content = '<office:document-content xmlns:text="t" xmlns:office="o" xmlns:dc="d"><office:body><office:text><text:tracked-changes><text:changed-region><text:deletion><text:p>alt</text:p></text:deletion></text:changed-region></text:tracked-changes><text:p>Vor<office:annotation><dc:creator>Autor</dc:creator><dc:date>2024-01-01T00:00:00</dc:date><text:p>Kommentar</text:p></office:annotation>nach</text:p></office:text></office:body></office:document-content>';
+    expect(await extractDocumentText(zip({ mimetype: 'application/vnd.oasis.opendocument.text', 'content.xml': content }), 'odt')).toBe('Vornach');
+  });
+
+  it('survives deeply nested legacy ppt containers without a stack overflow', async () => {
+    let inner = Buffer.alloc(0);
+    for (let i = 0; i < 20000; i++) {
+      const ch = Buffer.alloc(8); ch.writeUInt16LE(0x0f, 0); ch.writeUInt16LE(0x03e8, 2); ch.writeUInt32LE(inner.length, 4);
+      inner = Buffer.concat([ch, inner]);
+    }
+    const cfb = CFB.utils.cfb_new();
+    CFB.utils.cfb_add(cfb, '/PowerPoint Document', inner);
+    const b = buf(new Uint8Array(CFB.write(cfb, { type: 'buffer' }) as Buffer));
+    expect(await extractDocumentText(b, 'ppt')).toBe('');
+  });
+
+  const DOC_FIXTURE = process.env.NOPE_MCP_DOC_FIXTURE;
+  it.skipIf(!DOC_FIXTURE || !existsSync(DOC_FIXTURE))('extracts a real legacy .doc (NOPE_MCP_DOC_FIXTURE)', async () => {
+    const b = readFileSync(DOC_FIXTURE!);
+    const r = await extractDocument(buf(new Uint8Array(b)), { mime: 'application/msword', url: 'https://x/a.doc' });
+    expect(r?.kind).toBe('doc');
+    expect((r?.text ?? '').length).toBeGreaterThan(100);
+  });
+});
+
