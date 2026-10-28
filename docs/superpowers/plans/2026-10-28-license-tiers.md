@@ -133,6 +133,7 @@
 - [ ] **Step 3: Implement.**
   - In `translateHit`, the hit counts as restricted when `text_policy=="match_only"`, or when `text_policy` is absent and `kind==30142 && !license_permissive`. A restricted hit gets `Text=""`, `Snippet=""` and `AccessLevel="metadata-only"`. Otherwise `Text` follows `license_permissive` as today and `AccessLevel="full"`.
   - Content-direct (`worker.go:292+`): pass `TextPolicyFull` if permissive. Otherwise pass a third internal value that keeps today's shape (snippet stored, no text). Simplest: have `BuildChunkDocs` treat `policy==""` as the legacy behaviour.
+  - Check `ui.go` and `cmd/mcp/` for any path that reads `text`, `snippet` or `match_text` other than through `translateHit`. Route it through `translateHit` or gate it the same way.
 - [ ] **Step 4:** Run `GOWORK=off go test -race ./...`. Expected: PASS.
 - [ ] **Step 5:** Commit `feat: match-only text policy; never return restricted 30142 snippets`.
 
