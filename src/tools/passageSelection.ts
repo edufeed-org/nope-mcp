@@ -49,8 +49,12 @@ export function selectPassages(hits: PassageHit[], limit: number): PassageHit[] 
  * input order. Only kind 30142 (read from event_coord) is subject to it; other
  * kinds are always released, with or without text.
  *
- * A 30142 hit is classified by its `amb.license` enrichment (missing → no
- * license). Outside `filter` it is dropped from both lists. It is released only
+ * A 30142 hit is classified by its `amb.license` enrichment (amb present but
+ * no license → unlicensed). Outside `filter` it is dropped from both lists.
+ * Exception: with `amb` absent entirely (indexer enrichment cache miss), a hit
+ * the indexer marked `access_level: "full"` with non-empty text is CC/PD of
+ * unknown exact license — released under `any`/`cc-any` (with `license: null`),
+ * dropped under `open`; any other amb-less hit is treated as unlicensed. It is released only
  * when every signal agrees on full access: the license classifies CC/PD, the
  * indexer did not mark it `access_level: "metadata-only"`, and it carries
  * non-empty `text` (the indexer releases text only for chunks its own gate
@@ -68,14 +72,17 @@ export function partitionPassageHits(
       released.push(hit);
       continue;
     }
+    const hasText = typeof hit.text === 'string' && hit.text.length > 0;
+    if (hit.amb === undefined && hit.access_level === 'full' && hasText) {
+      // Enrichment cache miss on a hit the indexer released: CC/PD, but which
+      // one is unknowable, so it cannot satisfy `open` (BY vs NC/ND).
+      if (filter !== 'open') released.push(hit);
+      continue;
+    }
     const license = hit.amb?.license;
     const { group } = classifyLicense(typeof license === 'string' ? license : undefined);
     if (!matchesLicenseFilter(group, filter)) continue;
-    const full =
-      accessLevelFor(group) === 'full' &&
-      hit.access_level !== 'metadata-only' &&
-      typeof hit.text === 'string' &&
-      hit.text.length > 0;
+    const full = accessLevelFor(group) === 'full' && hit.access_level !== 'metadata-only' && hasText;
     (full ? released : metadataOnly).push(hit);
   }
   return { released, metadataOnly };

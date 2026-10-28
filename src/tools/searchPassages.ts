@@ -355,7 +355,7 @@ export function registerSearchPassagesTool(
         'user to them by title, license and link, never quote or paraphrase them as content. ' +
         'Cite the license and the creator/publisher with every learning-resource passage. ' +
         'licenseFilter narrows learning resources: "open" = CC0, Public Domain, CC BY, ' +
-        'CC BY-SA; "cc-any" = all Creative Commons and Public Domain (no metadataOnlyMatches); ' +
+        'CC BY-SA; "cc-any" = all Creative Commons and Public Domain (normally no metadataOnlyMatches); ' +
         '"any" = also unlicensed and all-rights-reserved resources, as metadataOnlyMatches. ' +
         (licenseFilterMax !== 'any'
           ? `This server limits results to licenseFilter '${licenseFilterMax}'. `

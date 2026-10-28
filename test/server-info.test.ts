@@ -57,6 +57,14 @@ describe('buildServerInstructions', () => {
     }
   );
 
+  it('keeps the German routing examples and intent-routing guidance after the English opening', () => {
+    const text = buildServerInstructions({ licenseFilterMax: 'open' });
+    expect(text).toMatch(/Jörg Lohrer/);
+    expect(text).toMatch(/wie kann ich Studierende aktivieren/);
+    expect(text).toMatch(/Route by INTENT before picking a search tool/);
+    expect(text).toMatch(/LEHRE LADEN/);
+  });
+
   it('is a pure function of licenseFilterMax (same input, same output)', () => {
     expect(buildServerInstructions({ licenseFilterMax: 'open' })).toBe(
       buildServerInstructions({ licenseFilterMax: 'open' })

@@ -49,7 +49,7 @@ describe('partitionPassageHits', () => {
 
   it('sends a 30142 hit whose license is not CC/PD to metadataOnly even with text', () => {
     const arr = h(`30142:${pk}:arr`, { text: 't', amb: { license: 'https://w3id.org/kim/license/attribution' } });
-    const unlicensed = h(`30142:${pk}:none`, { text: 't' });
+    const unlicensed = h(`30142:${pk}:none`, { text: 't', amb: { name: 'x' } });
     expect(partitionPassageHits([arr, unlicensed], 'any')).toEqual({ released: [], metadataOnly: [arr, unlicensed] });
   });
 
@@ -71,5 +71,27 @@ describe('partitionPassageHits', () => {
     const none = h(`30142:${pk}:none`);
     const out = partitionPassageHits([nc, arr, none], 'cc-any');
     expect(out).toEqual({ released: [nc], metadataOnly: [] });
+  });
+
+  it('with cc-any, a CC hit without released text still lands in metadataOnly (indexer rollout skew)', () => {
+    const skew = h(`30142:${pk}:skew`, { amb: ncSa });
+    expect(partitionPassageHits([skew], 'cc-any')).toEqual({ released: [], metadataOnly: [skew] });
+  });
+
+  it('amb absent but indexer-released full text: released under any and cc-any, dropped under open', () => {
+    const miss = h(`30142:${pk}:miss`, { text: 't', access_level: 'full' });
+    expect(partitionPassageHits([miss], 'any')).toEqual({ released: [miss], metadataOnly: [] });
+    expect(partitionPassageHits([miss], 'cc-any')).toEqual({ released: [miss], metadataOnly: [] });
+    expect(partitionPassageHits([miss], 'open')).toEqual({ released: [], metadataOnly: [] });
+  });
+
+  it('amb present without a license and with text is metadata-only under any', () => {
+    const named = h(`30142:${pk}:named`, { text: 't', access_level: 'full', amb: { name: 'x' } });
+    expect(partitionPassageHits([named], 'any')).toEqual({ released: [], metadataOnly: [named] });
+  });
+
+  it('amb absent without access_level full stays metadata-only under any', () => {
+    const bare = h(`30142:${pk}:bare`, { text: 't' });
+    expect(partitionPassageHits([bare], 'any')).toEqual({ released: [], metadataOnly: [bare] });
   });
 });

@@ -304,6 +304,14 @@ describe('runSearchPassages license tiers', () => {
     expect(out.passages[1]).not.toHaveProperty('creator');
   });
 
+  it('an amb-less released passage carries license null and no attribution', async () => {
+    const d = deps({ searchChunks: vi.fn(async () => ({ total: 1, hits: [hit(res('miss'), 1.0, { amb: undefined })] })) });
+    const out = await runSearchPassages(d, { question: 'q', kinds: [30142] }, undefined);
+    expect(out.passages).toHaveLength(1);
+    expect(out.passages[0]).toMatchObject({ accessLevel: 'full', license: null });
+    expect(out.passages[0]).not.toHaveProperty('creator');
+  });
+
   it('lists metadata-only matches deduplicated per event_coord, capped at limit, with no text fields', async () => {
     const d = deps({
       searchChunks: vi.fn(async () => ({
@@ -388,6 +396,7 @@ describe('search_passages description', () => {
     const text = description();
     expect(text).toContain('Passages come from Creative Commons and Public Domain learning resources');
     expect(text).toContain('metadataOnlyMatches');
+    expect(text).toContain('(normally no metadataOnlyMatches)');
     expect(text).toContain('Cite the license and the creator/publisher with every learning-resource passage.');
     expect(text).toContain('a passage with only a snippet and no text has no fulltext yet');
     expect(text).not.toContain('license-gated');
