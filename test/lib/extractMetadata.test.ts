@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { nip19 } from 'nostr-tools';
 import { extractMetadata } from '../../src/lib/extractMetadata.js';
-import { canonicalConceptId } from '../../src/lib/conceptId.js';
+import { canonicalConceptId, canonicalNostrUri } from '../../src/lib/conceptId.js';
 import type { AnthropicLike } from '../../src/lib/llm.js';
 import { vocabularyCache } from '../../src/skos/cache.js';
 import type { ParsedVocabulary } from '../../src/skos/types.js';
@@ -772,8 +772,8 @@ describe('extractMetadata — output shape', () => {
 
 describe('extractMetadata — Nostr concept identifiers', () => {
   const PUB = 'd2689e2f41dabfba953da26655a94ce2aa4e029c383ee921c6a4deafab99a612';
-  const canon = (d: string) => 'nostr:' + nip19.naddrEncode({ kind: 39738, pubkey: PUB, identifier: d, relays: [] });
-  const SCHEME_NADDR = nip19.naddrEncode({ kind: 39737, pubkey: PUB, identifier: 'didaktisches-konzept', relays: [] });
+  const canon = (d: string) => canonicalNostrUri(39738, PUB, d);
+  const SCHEME_NADDR = canonicalNostrUri(39737, PUB, 'didaktisches-konzept').slice('nostr:'.length);
   const didaktik: ParsedVocabulary = {
     scheme: { id: 'nostr:' + SCHEME_NADDR, type: 'ConceptScheme', title: { de: 'Didaktisches Konzept' }, hasTopConcept: [] },
     concepts: new Map([
@@ -898,8 +898,8 @@ describe('extractMetadata — bible references need a chapter', () => {
 
 describe('extractMetadata — alias edge cases', () => {
   const PUB = 'd2689e2f41dabfba953da26655a94ce2aa4e029c383ee921c6a4deafab99a612';
-  const canon = (d: string) => 'nostr:' + nip19.naddrEncode({ kind: 39738, pubkey: PUB, identifier: d, relays: [] });
-  const KL = nip19.naddrEncode({ kind: 39737, pubkey: PUB, identifier: 'klassenstufen', relays: [] });
+  const canon = (d: string) => canonicalNostrUri(39738, PUB, d);
+  const KL = canonicalNostrUri(39737, PUB, 'klassenstufen').slice('nostr:'.length);
   const klassen: ParsedVocabulary = {
     scheme: { id: 'nostr:' + KL, type: 'ConceptScheme', title: { de: 'Klassenstufen' }, hasTopConcept: [] },
     concepts: new Map([
@@ -927,7 +927,7 @@ describe('extractMetadata — alias edge cases', () => {
   });
 
   it('does not alias a concept whose d equals another concept id in the field (collision → full id shown)', async () => {
-    const COLL = nip19.naddrEncode({ kind: 39737, pubkey: PUB, identifier: 'coll', relays: [] });
+    const COLL = canonicalNostrUri(39737, PUB, 'coll').slice('nostr:'.length);
     const vocab: ParsedVocabulary = {
       scheme: { id: 'nostr:' + COLL, type: 'ConceptScheme', title: { de: 'C' }, hasTopConcept: [] },
       concepts: new Map([

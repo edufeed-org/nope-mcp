@@ -6,6 +6,16 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-28
+
+### Fixed
+
+- Canonical `nostr:naddr1…` identifiers are now byte-exact per NIP-VOCAB
+  (TLV order d, author, kind). 0.5.0 used nostr-tools' `naddrEncode`, which
+  writes the kind first: it decodes to the same concept but is a different
+  string from what nostr-vocab-core, the crawlers and the indexer emit, so
+  string comparisons and facet hashes would not have matched.
+
 ## [0.5.0] - 2026-10-28
 
 ### Changed

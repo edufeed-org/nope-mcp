@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { nip19 } from 'nostr-tools';
 import type { Filter, NostrEvent } from 'nostr-tools';
+import { canonicalNostrUri } from '../../src/lib/conceptId.js';
 import {
   loadVocabularyFromNaddr,
   type RelayQuery
@@ -104,7 +105,7 @@ describe('loadVocabularyFromNaddr', () => {
   it('decodes the naddr and returns scheme + concepts', async () => {
     const fake = new FakeRelay([SCHEME_EVENT, TEXT_CONCEPT, VIDEO_CONCEPT]);
     const vocab = await loadVocabularyFromNaddr(NADDR, { relayClient: fake });
-    expect(vocab.scheme.id).toBe('nostr:' + nip19.naddrEncode({ kind: 39737, pubkey: PUB, identifier: D, relays: [] }));
+    expect(vocab.scheme.id).toBe(canonicalNostrUri(39737, PUB, D));
     expect(vocab.concepts.size).toBe(2);
   });
 
@@ -137,7 +138,7 @@ describe('loadVocabularyFromNaddr', () => {
     const fake = new FakeRelay([SCHEME_EVENT, CUSTOM_CONCEPT]);
     const vocab = await loadVocabularyFromNaddr(NADDR, { relayClient: fake });
     expect([...vocab.concepts.keys()]).toContain(
-      'nostr:' + nip19.naddrEncode({ kind: 39738, pubkey: PUB, identifier: 'custom', relays: [] })
+      canonicalNostrUri(39738, PUB, 'custom')
     );
   });
 
@@ -165,7 +166,7 @@ describe('loadVocabularyFromNaddr — canonical identifiers (NIP-VOCAB)', () => 
   it('identifies a concept without an i tag by its relay-less nostr:naddr and keeps d as notation', async () => {
     const relay = new FakeRelay([SCHEME_EVENT, TEXT_CONCEPT, VIDEO_CONCEPT, CUSTOM_CONCEPT]);
     const vocab = await loadVocabularyFromNaddr(NADDR, { relayClient: relay });
-    const expected = 'nostr:' + nip19.naddrEncode({ kind: 39738, pubkey: PUB, identifier: 'custom', relays: [] });
+    const expected = canonicalNostrUri(39738, PUB, 'custom');
     const custom = vocab.concepts.get(expected);
     expect(custom).toBeDefined();
     expect(custom?.notation).toEqual(['custom']);
@@ -183,7 +184,7 @@ describe('loadVocabularyFromNaddr — canonical identifiers (NIP-VOCAB)', () => 
   it('identifies the scheme by its relay-less nostr:naddr', async () => {
     const relay = new FakeRelay([SCHEME_EVENT, TEXT_CONCEPT]);
     const vocab = await loadVocabularyFromNaddr(NADDR, { relayClient: relay });
-    expect(vocab.scheme.id).toBe('nostr:' + nip19.naddrEncode({ kind: 39737, pubkey: PUB, identifier: D, relays: [] }));
+    expect(vocab.scheme.id).toBe(canonicalNostrUri(39737, PUB, D));
   });
 });
 
