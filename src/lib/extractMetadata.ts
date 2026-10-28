@@ -1,5 +1,5 @@
 import { jsonrepair } from 'jsonrepair';
-import { fetchPage, type FetchPageResult } from './fetchPage.js';
+import { fetchPage, type FetchPageResult, type FetchPageInput } from './fetchPage.js';
 import { canonicalConceptId, conceptAlias } from './conceptId.js';
 import { llmEnrich, type AnthropicLike } from './llm.js';
 import { vocabSnapshot, type VocabSnapshot, type VocabConcept } from './vocabs.js';
@@ -56,6 +56,8 @@ export interface ExtractMetadataInput {
    * PDF responses degrade to empty `readableText`.
    */
   pdfExtract?: (buffer: ArrayBuffer) => Promise<string>;
+  /** Office-document extractor, forwarded to fetchPage (see docExtractor.ts). */
+  docExtract?: FetchPageInput['docExtract'];
   llmClient?: AnthropicLike;
   llmModel?: string;
 }
@@ -326,7 +328,7 @@ function combineReadableTexts(
 export async function extractMetadata(
   input: ExtractMetadataInput
 ): Promise<ExtractMetadataResult> {
-  const { url, urls, variant, skosSchemes = {}, vocabRelays, fetchFn, pdfExtract, llmClient, llmModel } = input;
+  const { url, urls, variant, skosSchemes = {}, vocabRelays, fetchFn, pdfExtract, docExtract, llmClient, llmModel } = input;
 
   const sourceUrls = urls ?? (url ? [url] : []);
   if (sourceUrls.length === 0) {
@@ -340,7 +342,7 @@ export async function extractMetadata(
   // oversized bodies) are skipped and reported instead of failing the
   // whole extraction.
   const settled = await Promise.allSettled(
-    sourceUrls.map((u) => fetchPage({ url: u, fetchFn, pdfExtract }))
+    sourceUrls.map((u) => fetchPage({ url: u, fetchFn, pdfExtract, docExtract }))
   );
   const first = settled[0];
   if (first.status === 'rejected') throw first.reason;

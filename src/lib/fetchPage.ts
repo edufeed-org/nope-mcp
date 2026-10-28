@@ -1,4 +1,5 @@
 import { parseHTML } from 'linkedom';
+import { isDocumentMime, type DocumentHint, type DocumentKind, type ExtractedDocument } from './docExtractor.js';
 import { Readability } from '@mozilla/readability';
 
 /**
@@ -28,11 +29,21 @@ export interface FetchPageInput {
    * extractors both degrade gracefully to empty text.
    */
   pdfExtract?: (buffer: ArrayBuffer) => Promise<string>;
+  /**
+   * Office-document → plain-text extractor (docx/pptx/xlsx, odt/odp/ods,
+   * legacy doc/ppt), see `extractDocument` in docExtractor.ts. Without it,
+   * document bodies are reported as `unsupported_type` (previous behaviour).
+   */
+  docExtract?: (buffer: ArrayBuffer, hint: DocumentHint) => Promise<ExtractedDocument | undefined>;
+  /** Size cap for office documents (presentations are large); default 64 MiB. */
+  maxDocumentBytes?: number;
 }
 
 export interface FetchPageResult {
   url: string;
-  contentType: 'html' | 'pdf';
+  contentType: 'html' | 'pdf' | 'document';
+  /** Set for contentType 'document'. */
+  documentKind?: DocumentKind;
   title?: string;
   description?: string;
   image?: string;
@@ -47,6 +58,7 @@ export interface FetchPageResult {
 // practice (the rpi-ekkw-ekhn konfi material runs ~8 MiB). Was 5 MiB until
 // users reported empty AI suggestions on perfectly-valid 6–10 MiB PDFs.
 const DEFAULT_MAX_BYTES = 20 * 1024 * 1024;
+const DEFAULT_MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 /**
@@ -77,6 +89,16 @@ const OPAQUE_TYPES = new Set([
   'application/x-download'
 ]);
 const READABLE_TYPES = new Set(['application/xhtml+xml', 'application/xml']);
+
+function hasZipMagic(buffer: ArrayBuffer): boolean {
+  const h = new Uint8Array(buffer.slice(0, 4));
+  return h.length === 4 && h[0] === 0x50 && h[1] === 0x4b && h[2] === 0x03 && h[3] === 0x04;
+}
+
+function hasOleMagic(buffer: ArrayBuffer): boolean {
+  const h = new Uint8Array(buffer.slice(0, 4));
+  return h.length === 4 && h[0] === 0xd0 && h[1] === 0xcf && h[2] === 0x11 && h[3] === 0xe0;
+}
 
 function hasPdfMagic(buffer: ArrayBuffer): boolean {
   const head = new Uint8Array(buffer.slice(0, 4));
@@ -200,7 +222,15 @@ function extractReadableText(html: string, url: string): string {
 }
 
 export async function fetchPage(input: FetchPageInput): Promise<FetchPageResult> {
-  const { url, fetchFn = fetch, maxBytes = DEFAULT_MAX_BYTES, timeoutMs = DEFAULT_TIMEOUT_MS, pdfExtract } = input;
+  const {
+    url,
+    fetchFn = fetch,
+    maxBytes = DEFAULT_MAX_BYTES,
+    maxDocumentBytes = DEFAULT_MAX_DOCUMENT_BYTES,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    pdfExtract,
+    docExtract
+  } = input;
   const parsed = guard(url);
 
   const controller = new AbortController();
@@ -210,7 +240,8 @@ export async function fetchPage(input: FetchPageInput): Promise<FetchPageResult>
     response = await fetchFn(parsed.toString(), {
       signal: controller.signal,
       headers: {
-        Accept: 'text/html, application/pdf',
+        Accept:
+          'text/html, application/pdf, application/vnd.openxmlformats-officedocument.*, application/vnd.oasis.opendocument.*, application/msword, application/vnd.ms-powerpoint, */*;q=0.1',
         'User-Agent': 'Mozilla/5.0 (compatible; edufeed-metadata-mcp/0.1)'
       }
     });
@@ -234,17 +265,44 @@ export async function fetchPage(input: FetchPageInput): Promise<FetchPageResult>
   //    turned into readable text here → unsupported_type
   let pdfBuffer: ArrayBuffer | undefined;
   let html: string | undefined;
+  let docBuffer: ArrayBuffer | undefined;
+  const hint: DocumentHint = { mime, url: parsed.toString() };
+  const tryDocument = async (buffer: ArrayBuffer): Promise<FetchPageResult> => {
+    if (buffer.byteLength > maxDocumentBytes) {
+      throw new PageTooLargeError(
+        `document body (${buffer.byteLength} bytes) exceeds size cap (${maxDocumentBytes} bytes)`
+      );
+    }
+    const doc = docExtract ? await docExtract(buffer, hint) : undefined;
+    if (!doc) {
+      throw new UnsupportedContentTypeError(
+        `unsupported content type ${mime || '(none)'}${docExtract ? ' (not a readable document)' : ''} for ${parsed.toString()}`
+      );
+    }
+    return {
+      url: parsed.toString(),
+      contentType: 'document',
+      documentKind: doc.kind,
+      ogTags: {},
+      jsonLd: [],
+      readableText: doc.text.trim()
+    };
+  };
   if (PDF_TYPES.has(mime)) {
     pdfBuffer = await response.arrayBuffer();
-  } else if (mime === '' || OPAQUE_TYPES.has(mime)) {
+  } else if (isDocumentMime(mime)) {
+    docBuffer = await response.arrayBuffer();
+  } else if (mime === '' || OPAQUE_TYPES.has(mime) || mime === 'application/zip') {
     const buffer = await response.arrayBuffer();
     if (hasPdfMagic(buffer)) {
       pdfBuffer = buffer;
+    } else if (hasZipMagic(buffer) || hasOleMagic(buffer)) {
+      docBuffer = buffer;
     } else if (mime === '') {
       html = new TextDecoder('utf-8').decode(buffer);
     } else {
       throw new UnsupportedContentTypeError(
-        `unsupported content type ${mime} (not a PDF) for ${parsed.toString()}`
+        `unsupported content type ${mime} (not a PDF or document) for ${parsed.toString()}`
       );
     }
   } else if (READABLE_TYPES.has(mime) || mime.startsWith('text/')) {
@@ -254,6 +312,8 @@ export async function fetchPage(input: FetchPageInput): Promise<FetchPageResult>
       `unsupported content type ${mime} for ${parsed.toString()}`
     );
   }
+
+  if (docBuffer) return tryDocument(docBuffer);
 
   if (pdfBuffer) {
     let readableText = '';

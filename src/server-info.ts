@@ -1,5 +1,5 @@
 export const SERVER_NAME = 'nope-mcp';
-export const SERVER_VERSION = '0.5.1';
+export const SERVER_VERSION = '0.6.0';
 
 /** The open-license sentence, included only while OPEN_LICENSES_ONLY is on. */
 function openLicenseSentence(openLicensesOnly: boolean): string {

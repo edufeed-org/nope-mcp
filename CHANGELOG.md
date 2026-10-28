@@ -6,6 +6,28 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-28
+
+### Added
+
+- **Office documents as sources.** `extract_metadata` (and `fetchPage`
+  with the new `docExtract` callback) reads Word, PowerPoint and Excel in
+  OOXML form (docx/pptx/xlsx), OpenDocument text/presentation/spreadsheet
+  (odt/odp/ods), legacy binary Word (`.doc`, via word-extractor) and
+  legacy binary PowerPoint (`.ppt`, text records of the PowerPoint
+  Document stream). Detection is by magic bytes and container contents, so
+  a .pptx served under a ".PPT" name or as `application/octet-stream` is
+  read correctly. Slides come in numeric order with notes after them;
+  animation timing and drawing offsets are dropped. Documents have their
+  own size cap (`maxDocumentBytes`, default 64 MiB). Fetch result
+  `contentType` gains `'document'` plus `documentKind`.
+- Dependencies: `fflate`, `word-extractor`, `cfb`.
+
+### Changed
+
+- `unsupported_type` now only covers bodies no extractor can read (images,
+  archives that are not documents, JSON, …).
+
 ## [0.5.1] - 2026-10-28
 
 ### Fixed
