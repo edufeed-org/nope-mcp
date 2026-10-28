@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { selectPassages, isOpenPassageHit, MAX_PASSAGES_PER_DOC, MIN_SCORE_RATIO } from '../../src/tools/passageSelection.js';
+import { selectPassages, partitionPassageHits, MAX_PASSAGES_PER_DOC, MIN_SCORE_RATIO } from '../../src/tools/passageSelection.js';
 import type { PassageHit } from '../../src/indexer/client.js';
 
 const hit = (coord: string, score: number, idx = 0): PassageHit =>
@@ -26,22 +26,50 @@ describe('selectPassages', () => {
   });
 });
 
-describe('isOpenPassageHit', () => {
+describe('partitionPassageHits', () => {
   const pk = 'a'.repeat(64);
-  const h = (coord: string, extra: Partial<PassageHit> = {}) => ({ ...hit(coord, 1), ...extra } as PassageHit);
-  it('passes every non-resource kind, with or without text', () => {
-    expect(isOpenPassageHit(h(`30023:${pk}:a`))).toBe(true);
-    expect(isOpenPassageHit(h(`30041:${pk}:a`, { text: 't' }))).toBe(true);
+  const h = (coord: string, extra: Record<string, unknown> = {}) => ({ ...hit(coord, 1), ...extra } as PassageHit);
+  const ncSa = { license: 'https://creativecommons.org/licenses/by-nc-sa/4.0/' };
+  const by = { license: 'https://creativecommons.org/licenses/by/4.0/' };
+
+  it('releases a 30142 hit with text and a BY-NC-SA license', () => {
+    const nc = h(`30142:${pk}:nc`, { text: 't', amb: ncSa, access_level: 'full' });
+    expect(partitionPassageHits([nc], 'any')).toEqual({ released: [nc], metadataOnly: [] });
   });
-  it('requires indexer-released text on a resource passage', () => {
-    expect(isOpenPassageHit(h(`30142:${pk}:a`))).toBe(false);
-    expect(isOpenPassageHit(h(`30142:${pk}:a`, { text: '' }))).toBe(false);
-    expect(isOpenPassageHit(h(`30142:${pk}:a`, { text: 't' }))).toBe(true);
+
+  it('sends a metadata-only 30142 hit to metadataOnly even if it carries a snippet (defence in depth)', () => {
+    const restricted = h(`30142:${pk}:r`, { text: 'leak', snippet: 'leak', amb: by, access_level: 'metadata-only' });
+    expect(partitionPassageHits([restricted], 'any')).toEqual({ released: [], metadataOnly: [restricted] });
   });
-  it('also rejects a resource whose cached license is not open', () => {
-    const nc = { license: 'https://creativecommons.org/licenses/by-nc-sa/4.0/' };
-    const by = { license: 'https://creativecommons.org/licenses/by/4.0/' };
-    expect(isOpenPassageHit(h(`30142:${pk}:a`, { text: 't', amb: nc }))).toBe(false);
-    expect(isOpenPassageHit(h(`30142:${pk}:a`, { text: 't', amb: by }))).toBe(true);
+
+  it('sends a 30142 hit without text and without access_level to metadataOnly', () => {
+    const noText = h(`30142:${pk}:x`, { amb: by });
+    expect(partitionPassageHits([noText], 'any')).toEqual({ released: [], metadataOnly: [noText] });
+  });
+
+  it('sends a 30142 hit whose license is not CC/PD to metadataOnly even with text', () => {
+    const arr = h(`30142:${pk}:arr`, { text: 't', amb: { license: 'https://w3id.org/kim/license/attribution' } });
+    const unlicensed = h(`30142:${pk}:none`, { text: 't' });
+    expect(partitionPassageHits([arr, unlicensed], 'any')).toEqual({ released: [], metadataOnly: [arr, unlicensed] });
+  });
+
+  it('keeps other kinds released, with or without text', () => {
+    const art = h(`30023:${pk}:a`);
+    const pub = h(`30041:${pk}:a`, { text: 't' });
+    expect(partitionPassageHits([art, pub], 'open')).toEqual({ released: [art, pub], metadataOnly: [] });
+  });
+
+  it('with open, drops the BY-NC-SA hit from both lists', () => {
+    const nc = h(`30142:${pk}:nc`, { text: 't', amb: ncSa });
+    const open = h(`30142:${pk}:by`, { text: 't', amb: by });
+    expect(partitionPassageHits([nc, open], 'open')).toEqual({ released: [open], metadataOnly: [] });
+  });
+
+  it('with cc-any, metadataOnly is empty', () => {
+    const nc = h(`30142:${pk}:nc`, { text: 't', amb: ncSa });
+    const arr = h(`30142:${pk}:arr`, { amb: { license: 'https://w3id.org/kim/license/attribution' } });
+    const none = h(`30142:${pk}:none`);
+    const out = partitionPassageHits([nc, arr, none], 'cc-any');
+    expect(out).toEqual({ released: [nc], metadataOnly: [] });
   });
 });

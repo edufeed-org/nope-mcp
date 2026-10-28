@@ -14,6 +14,8 @@ export interface PassageHit {
   page?: number;
   source_url?: string;
   score: number;
+  /** Indexer tier for 30142 hits; `metadata-only` hits carry no text, snippet, heading, section_path or page. */
+  access_level?: 'full' | 'metadata-only';
   amb?: Record<string, unknown>;
 }
 

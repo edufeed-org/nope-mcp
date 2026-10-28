@@ -47,26 +47,15 @@ describe('buildServerInstructions', () => {
     );
   });
 
-  it('says a snippet-only passage simply has no fulltext yet when licenseFilterMax is below any (metadata-only hits are already dropped)', () => {
-    const text = buildServerInstructions({ licenseFilterMax: 'open' });
-    expect(text).toMatch(/A passage with a snippet but no text has no fulltext yet; say so\./);
-    expect(text).not.toMatch(/A passage with a snippet but no text is either license-gated/);
-  });
-
-  it('keeps the license-gated possibility when licenseFilterMax is any', () => {
-    const text = buildServerInstructions({ licenseFilterMax: 'any' });
-    expect(text).toMatch(
-      /A passage with a snippet but no text is either license-gated or has no fulltext yet; say so\./
-    );
-  });
-
-  it('keeps the German routing examples and intent-routing guidance after the English opening', () => {
-    const text = buildServerInstructions({ licenseFilterMax: 'open' });
-    expect(text).toMatch(/Jörg Lohrer/);
-    expect(text).toMatch(/wie kann ich Studierende aktivieren/);
-    expect(text).toMatch(/Route by INTENT before picking a search tool/);
-    expect(text).toMatch(/LEHRE LADEN/);
-  });
+  it.each(['open', 'cc-any', 'any'] as const)(
+    'says a snippet-only passage simply has no fulltext yet and points to metadataOnlyMatches (%s)',
+    (licenseFilterMax) => {
+      const text = buildServerInstructions({ licenseFilterMax });
+      expect(text).toMatch(/A passage with a snippet but no text has no fulltext yet; say so\./);
+      expect(text).not.toMatch(/license-gated/);
+      expect(text).toMatch(/metadataOnlyMatches, without text/);
+    }
+  );
 
   it('is a pure function of licenseFilterMax (same input, same output)', () => {
     expect(buildServerInstructions({ licenseFilterMax: 'open' })).toBe(
@@ -79,11 +68,7 @@ describe('buildServerInstructions', () => {
 });
 
 describe('snippetOnlyReason', () => {
-  it('drops the license-gated possibility when the flag is on, since those hits are already filtered out', () => {
-    expect(snippetOnlyReason(true)).toBe('has no fulltext yet');
-  });
-
-  it('keeps the license-gated possibility when the flag is off', () => {
-    expect(snippetOnlyReason(false)).toBe('is either license-gated or has no fulltext yet');
+  it('only names missing fulltext, since unquotable resources never become passages', () => {
+    expect(snippetOnlyReason()).toBe('has no fulltext yet');
   });
 });

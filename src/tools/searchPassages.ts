@@ -13,11 +13,13 @@ import { buildScope } from '../spells/scope.js';
 import { resolveRelaysOrError, relaysNotSearched } from './relaySelection.js';
 import { getSessionPubkey } from './signer.js';
 import {
-  OVERFETCH_FACTOR, LICENSE_OVERFETCH_FACTOR, PASSAGE_ALPHA, selectPassages, isOpenPassageHit,
+  OVERFETCH_FACTOR, LICENSE_OVERFETCH_FACTOR, PASSAGE_ALPHA, selectPassages, partitionPassageHits,
 } from './passageSelection.js';
 import { READ_ONLY } from './annotations.js';
 import { snippetOnlyReason } from '../server-info.js';
-import type { LicenseFilter } from '../license/classify.js';
+import {
+  classifyLicense, clampLicenseFilter, type LicenseFilter, type LicenseInfo,
+} from '../license/classify.js';
 
 export interface FetchSpellResult {
   event: NostrEvent | null;
@@ -43,8 +45,93 @@ export interface SearchPassagesParams extends InlineScopeParams {
   spell?: string;
   me?: string;
   limit?: number;
-  /** Drop resource (30142) passages that are not openly licensed; set by the server config. */
-  openLicensesOnly?: boolean;
+  /** Requested license filter for learning-resource (30142) hits; narrowed to licenseFilterMax. */
+  licenseFilter?: LicenseFilter;
+  /** Operator ceiling (LICENSE_FILTER_MAX); set by the server config, default `any`. */
+  licenseFilterMax?: LicenseFilter;
+}
+
+/** A passage whose text may reach the client. license/creator/publisher are set for 30142 hits only. */
+export type ReleasedPassage = PassageHit & {
+  accessLevel: 'full';
+  license?: LicenseInfo | null;
+  creator?: string[];
+  publisher?: string[];
+};
+
+/** A matching learning resource whose license does not permit quoting: metadata only, never text. */
+export interface MetadataOnlyMatch {
+  naddr: string;
+  title?: string;
+  license: LicenseInfo | null;
+  accessLevel: 'metadata-only';
+  creator?: string[];
+  publisher?: string[];
+  sourcePage?: string;
+}
+
+function stringList(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v.filter((x): x is string => typeof x === 'string' && x.length > 0);
+  return out.length > 0 ? out : undefined;
+}
+
+function ambLicense(hit: PassageHit): LicenseInfo | null {
+  const raw = hit.amb?.license;
+  return classifyLicense(typeof raw === 'string' ? raw : undefined).license;
+}
+
+function attribution(hit: PassageHit): { creator?: string[]; publisher?: string[] } {
+  const creator = stringList(hit.amb?.creator);
+  const publisher = stringList(hit.amb?.publisher);
+  return { ...(creator ? { creator } : {}), ...(publisher ? { publisher } : {}) };
+}
+
+function toReleasedPassage(hit: PassageHit): ReleasedPassage {
+  if (!hit.event_coord.startsWith('30142:')) return { ...hit, accessLevel: 'full' };
+  return { ...hit, accessLevel: 'full', license: ambLicense(hit), ...attribution(hit) };
+}
+
+/** naddr for a `kind:pubkey:d` coord (d may itself contain colons); undefined when malformed. */
+function coordToNaddr(coord: string, relay: string): string | undefined {
+  const first = coord.indexOf(':');
+  const second = coord.indexOf(':', first + 1);
+  if (first <= 0 || second <= first) return undefined;
+  const kind = Number(coord.slice(0, first));
+  try {
+    return nip19.naddrEncode({
+      kind, pubkey: coord.slice(first + 1, second), identifier: coord.slice(second + 1), relays: [relay],
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * One entry per event_coord, in hit order, at most `limit`. Built field by
+ * field from metadata only — never spreads the hit — so no text, snippet,
+ * heading, section_path or page can leak, whatever the indexer sent.
+ */
+function toMetadataOnlyMatches(hits: PassageHit[], relay: string, limit: number): MetadataOnlyMatch[] {
+  const seen = new Set<string>();
+  const out: MetadataOnlyMatch[] = [];
+  for (const hit of hits) {
+    if (out.length >= limit) break;
+    if (seen.has(hit.event_coord)) continue;
+    seen.add(hit.event_coord);
+    const naddr = coordToNaddr(hit.event_coord, relay);
+    if (!naddr) continue;
+    const name = hit.amb?.name;
+    out.push({
+      naddr,
+      ...(typeof name === 'string' && name ? { title: name } : {}),
+      license: ambLicense(hit),
+      accessLevel: 'metadata-only',
+      ...attribution(hit),
+      ...(typeof hit.source_url === 'string' && hit.source_url ? { sourcePage: hit.source_url } : {}),
+    });
+  }
+  return out;
 }
 
 function decodeSpellRef(v: string): { id: string; hints: string[] } {
@@ -212,16 +299,19 @@ export async function runSearchPassages(
   }
   // Over-fetch with vector-leaning ranking, then cap per document and apply
   // the relative score floor so `limit` passages come from several sources.
-  // The license filter runs on the hits, never in the indexer query, and
-  // before selection so the floor is relative to the best open hit.
+  // The license partition runs on the hits, never in the indexer query, and
+  // before selection so the floor is relative to the best released hit.
+  const { effective, clamped } = clampLicenseFilter(params.licenseFilter, params.licenseFilterMax ?? 'any');
   const limit = Math.min(params.limit ?? 10, 25);
-  const factor = OVERFETCH_FACTOR * (params.openLicensesOnly ? LICENSE_OVERFETCH_FACTOR : 1);
-  const k = Math.min(limit * factor, 100);
+  const k = Math.min(limit * OVERFETCH_FACTOR * LICENSE_OVERFETCH_FACTOR, 100);
   const res = await deps.searchChunks(deps.relay, { q: params.question, k, filter: scope.chunkFilter, alpha: PASSAGE_ALPHA });
-  const hits = params.openLicensesOnly ? res.hits.filter(isOpenPassageHit) : res.hits;
+  const { released, metadataOnly } = partitionPassageHits(res.hits, effective);
 
   return {
-    passages: selectPassages(hits, limit),
+    passages: selectPassages(released, limit).map(toReleasedPassage),
+    metadataOnlyMatches: toMetadataOnlyMatches(metadataOnly, deps.relay, limit),
+    licenseFilter: effective,
+    ...(clamped ? { licenseFilterClamped: true as const } : {}),
     scope: {
       spell: spellToEventTemplate(spell),
       ...(spellEventId ? { spell_event_id: spellEventId } : {}),
@@ -240,8 +330,7 @@ export function registerSearchPassagesTool(
   indexer: IndexerClient,
   opts: { licenseFilterMax?: LicenseFilter } = {}
 ): void {
-  // Transitional adapter to the old boolean; B3/B4 replace it.
-  const openLicensesOnly = (opts.licenseFilterMax ?? 'any') !== 'any';
+  const licenseFilterMax = opts.licenseFilterMax ?? 'any';
   server.registerTool(
     'search_passages',
     {
@@ -257,11 +346,19 @@ export function registerSearchPassagesTool(
         'group ("Friedenserziehung in der Grundschule: Einstieg in das Thema Frieden mit ' +
         'Kindern"), not as the user\'s literal sentence ("Wie kann ich …?"). Results are ' +
         'capped at two passages per document; a passage with only a snippet and no text ' +
-        snippetOnlyReason(openLicensesOnly) +
+        snippetOnlyReason() +
         ' — say so instead of guessing. ' +
-        (openLicensesOnly
-          ? 'Educational-resource passages come only from openly licensed resources (CC0, ' +
-            'Public Domain, CC BY, CC BY-SA); other content types are not license-filtered. '
+        'Passages come from Creative Commons and Public Domain learning resources and from ' +
+        'articles, wikis, publications and the other content kinds. Other matching learning ' +
+        'resources appear in `metadataOnlyMatches` (naddr, title, license, creator/publisher, ' +
+        'sourcePage) without text, because their license does not permit quoting — point the ' +
+        'user to them by title, license and link, never quote or paraphrase them as content. ' +
+        'Cite the license and the creator/publisher with every learning-resource passage. ' +
+        'licenseFilter narrows learning resources: "open" = CC0, Public Domain, CC BY, ' +
+        'CC BY-SA; "cc-any" = all Creative Commons and Public Domain (no metadataOnlyMatches); ' +
+        '"any" = also unlicensed and all-rights-reserved resources, as metadataOnlyMatches. ' +
+        (licenseFilterMax !== 'any'
+          ? `This server limits results to licenseFilter '${licenseFilterMax}'. `
           : '') +
         'Scope is required but simple: with ' +
         'no source restriction from the user, pass the content kinds (e.g. kinds:[30142] ' +
@@ -290,7 +387,16 @@ export function registerSearchPassagesTool(
         until: z.string().optional().describe('Inline scope: absolute Unix seconds or relative.'),
         me: z.string().optional().describe('Who $me refers to (npub or hex). Defaults to the calling identity.'),
         relays: z.array(z.string()).optional().describe('Relay selection (list_relays set), by full URL or short name (e.g. "oersi", "sodix"). First mapped relay is used.'),
-        limit: z.number().min(1).max(25).optional().default(10).describe('Passages to return (1-25, default 10).'),
+        limit: z.number().min(1).max(25).optional().default(10).describe('Passages to return (1-25, default 10); also caps metadataOnlyMatches.'),
+        licenseFilter: z
+          .enum(['open', 'cc-any', 'any'])
+          .optional()
+          .describe(
+            'Restrict learning-resource (30142) hits by license: "open" (CC0, Public Domain, ' +
+              'CC BY, CC BY-SA), "cc-any" (all Creative Commons and Public Domain) or "any" ' +
+              "(every resource, including unlicensed and all-rights-reserved). Default: the " +
+              "server's ceiling (normally any). Other content types are never license-filtered."
+          ),
       },
       annotations: READ_ONLY,
     },
@@ -308,7 +414,7 @@ export function registerSearchPassagesTool(
         searchChunks: (r, body) => indexer.searchChunks(r, body),
       };
       try {
-        const out = await runSearchPassages(deps, { ...(params as SearchPassagesParams), openLicensesOnly }, extra);
+        const out = await runSearchPassages(deps, { ...(params as SearchPassagesParams), licenseFilterMax }, extra);
         const notSearched = relaysNotSearched(client, [relay]);
         return {
           content: [{

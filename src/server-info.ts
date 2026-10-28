@@ -29,17 +29,13 @@ function openLicenseSentence(licenseFilterMax: LicenseFilter): string {
 }
 
 /**
- * Why a passage might carry only a snippet and no text, ceiling-aware: when
- * the server's licenseFilterMax is below `any`, a metadata-only
- * learning-resource passage was already dropped by the client-side license
- * filter before results were returned (see passageSelection.ts), so a
- * snippet-only hit the model actually sees can only mean missing fulltext —
- * license-gating is no longer a live possibility to mention. When the
- * ceiling is `any`, metadata-only resources are not dropped, so
- * license-gating is still a real explanation.
+ * Why a released passage might carry only a snippet and no text. Learning
+ * resources without releasable text never become passages — search_passages
+ * moves them to `metadataOnlyMatches` (see passageSelection.ts) — so a
+ * snippet-only passage the model sees can only mean missing fulltext.
  */
-export function snippetOnlyReason(licenseFilterBelowAny: boolean): string {
-  return licenseFilterBelowAny ? 'has no fulltext yet' : 'is either license-gated or has no fulltext yet';
+export function snippetOnlyReason(): string {
+  return 'has no fulltext yet';
 }
 
 /**
@@ -73,7 +69,6 @@ function openingParagraph(licenseFilterMax: LicenseFilter): string {
  * misdescribes the license policy for a licenseFilterMax other than `any`.
  */
 export function buildServerInstructions({ licenseFilterMax }: { licenseFilterMax: LicenseFilter }): string {
-  const licenseFilterBelowAny = licenseFilterMax !== 'any';
   return `${openingParagraph(licenseFilterMax)}
 
 Two flows cover most questions:
@@ -81,7 +76,7 @@ Two flows cover most questions:
 - By topic ("materials on peace education"): call search_content, then hand a result's naddr to get_resource for full metadata.
 
 Route by INTENT before picking a search tool (when search_passages is available):
-- QUESTION intent — the user asks something and wants an answer ("wie kann ich Studierende aktivieren?", "was hilft bei …?"): use search_passages, answer FROM the returned fulltext passages, and cite each source (name + source_url/page). Phrase the question as a topical statement naming subject and target group ("Friedenserziehung in der Grundschule: Einstieg mit Kindern"), not the user's literal "Wie kann ich …?" — ranking is hybrid keyword+vector. A passage with a snippet but no text ${snippetOnlyReason(licenseFilterBelowAny)}; say so. No source restriction from the user? Just pass the relevant content kinds (e.g. kinds:[30142]). Optionally follow up with search_content to offer browsable materials.
+- QUESTION intent — the user asks something and wants an answer ("wie kann ich Studierende aktivieren?", "was hilft bei …?"): use search_passages, answer FROM the returned fulltext passages, and cite each source (name + source_url/page). Phrase the question as a topical statement naming subject and target group ("Friedenserziehung in der Grundschule: Einstieg mit Kindern"), not the user's literal "Wie kann ich …?" — ranking is hybrid keyword+vector. A passage with a snippet but no text ${snippetOnlyReason()}; say so. Matching learning resources whose license does not permit quoting come back in metadataOnlyMatches, without text: point to them by title, license and link, never quote them. No source restriction from the user? Just pass the relevant content kinds (e.g. kinds:[30142]). Optionally follow up with search_content to offer browsable materials.
 - DISCOVERY intent — the user wants materials to browse ("finde/suche/empfiehl Materialien zu X"): use search_content and present the items as links.
 - AMBIGUOUS or very broad: ask ONE short clarifying question ("Möchtest du eine begründete Antwort aus den Materialien, oder eine Liste von Materialien zum Stöbern?") — and mention scoping options the user may not know exist: restricting to a publisher or author, a specific relay/corpus (list_relays), or a time window.
 
