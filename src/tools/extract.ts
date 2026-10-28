@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { extractMetadata } from '../lib/extractMetadata.js';
 import type { AnthropicLike } from '../lib/llm.js';
 import { extractPdfText } from '../lib/pdfExtractor.js';
+import { extractDocument } from '../lib/docExtractor.js';
 import { VARIANTS } from '../lib/schema.js';
 import { READ_OPEN_WORLD } from './annotations.js';
 
@@ -103,6 +104,7 @@ export function registerExtractTool(server: McpServer): void {
         skosSchemes: params.skosSchemes ?? defaultSchemesFromEnv(),
         llmClient,
         pdfExtract: extractPdfText,
+        docExtract: extractDocument,
         ...(vocabRelays && vocabRelays.length > 0 ? { vocabRelays } : {}),
         ...(process.env.ANTHROPIC_MODEL ? { llmModel: process.env.ANTHROPIC_MODEL } : {})
       });

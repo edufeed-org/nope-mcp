@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { nip19 } from 'nostr-tools';
 import { extractMetadata } from '../../src/lib/extractMetadata.js';
 import { canonicalConceptId, canonicalNostrUri } from '../../src/lib/conceptId.js';
+import { zipSync, strToU8 } from 'fflate';
+import { extractDocument } from '../../src/lib/docExtractor.js';
 import type { AnthropicLike } from '../../src/lib/llm.js';
 import { vocabularyCache } from '../../src/skos/cache.js';
 import type { ParsedVocabulary } from '../../src/skos/types.js';
@@ -968,6 +970,34 @@ describe('extractMetadata — skipped source codes', () => {
       llmClient: stubLlm({ name: 'P' }, {})
     });
     expect(res.skippedSources).toEqual([{ url: 'https://example.org/big', code: 'page_too_large', reason: expect.stringContaining('exceeds') }]);
+  });
+});
+
+describe('extractMetadata — office documents as sources', () => {
+  const pptx = zipSync({
+    '[Content_Types].xml': strToU8('<Types/>'),
+    'ppt/slides/slide1.xml': strToU8('<p:sld xmlns:a="x"><a:p><a:r><a:t>Jesus beruft Simon Petrus</a:t></a:r></a:p></p:sld>')
+  });
+  const fetchFn = (async (input: string | URL | Request) => {
+    const u = String(input);
+    if (u.endsWith('.PPT')) return new Response(pptx, { status: 200, headers: { 'content-type': 'application/vnd.ms-powerpoint' } });
+    return new Response('<html><title>P</title><body><p>page</p></body></html>', { status: 200, headers: { 'content-type': 'text/html' } });
+  }) as unknown as typeof fetch;
+
+  it('feeds a presentation served under a legacy name to the model instead of skipping it', async () => {
+    const llm = stubLlm({ name: 'P' }, {});
+    const createSpy = vi.spyOn(llm.messages, 'create');
+    const res = await extractMetadata({
+      urls: ['https://example.org/page', 'https://example.org/M1PPPJ_1.PPT'],
+      variant: 'ekw',
+      fetchFn,
+      docExtract: extractDocument,
+      llmClient: llm
+    });
+    expect(res.skippedSources).toBeUndefined();
+    const pageText = (createSpy.mock.calls[0][0] as { messages: Array<{ content: Array<{ text: string }> }> }).messages[0].content[1].text;
+    expect(pageText).toContain('=== Source 2: https://example.org/M1PPPJ_1.PPT ===');
+    expect(pageText).toContain('Jesus beruft Simon Petrus');
   });
 });
 

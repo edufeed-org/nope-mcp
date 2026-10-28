@@ -1,6 +1,6 @@
 {
   "name": "nope-mcp",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "ContextVM MCP server for querying AMB educational metadata from Nostr relays (formerly amb-mcp)",
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -29,8 +29,10 @@
     "applesauce-core": "^5.1.0",
     "applesauce-relay": "^5.1.0",
     "applesauce-signers": "^5.1.0",
+    "cfb": "^1.2.2",
     "cors": "^2.8.6",
     "express": "^4.22.1",
+    "fflate": "^0.8.3",
     "jose": "^5.9.6",
     "jsonrepair": "^3.14.0",
     "linkedom": "^0.18.12",
@@ -38,6 +40,7 @@
     "nostr-tools": "^2.10.0",
     "qrcode-terminal": "^0.12.0",
     "unpdf": "^1.6.2",
+    "word-extractor": "^1.0.4",
     "ws": "^8.20.0",
     "zod": "^3.24.0"
   },

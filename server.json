@@ -3,7 +3,7 @@
   "name": "org.edufeed/nope-mcp",
   "title": "nope-mcp — Open Educational Resources search",
   "description": "Search German open educational resources (OER) via AMB/schema.org metadata, open licenses only.",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "websiteUrl": "https://edufeed.org",
   "repository": {
     "url": "https://github.com/edufeed-org/nope-mcp",

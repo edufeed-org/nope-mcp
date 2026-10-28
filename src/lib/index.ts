@@ -8,8 +8,12 @@
 export { extractMetadata } from './extractMetadata.js';
 export type { ExtractMetadataInput } from './extractMetadata.js';
 
-export { fetchPage } from './fetchPage.js';
+export { fetchPage, PageTooLargeError, UnsupportedContentTypeError } from './fetchPage.js';
 export type { FetchPageInput, FetchPageResult } from './fetchPage.js';
+
+export { extractPdfText } from './pdfExtractor.js';
+export { extractDocument, detectDocument, extractDocumentText, MAX_PART_BYTES } from './docExtractor.js';
+export type { DocumentHint, DocumentKind, ExtractedDocument } from './docExtractor.js';
 
 export { vocabSnapshot } from './vocabs.js';
 export type { VocabConcept, VocabSnapshot, VocabSnapshotOptions } from './vocabs.js';

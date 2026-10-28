@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { zipSync, strToU8 } from 'fflate';
+import { extractDocument } from '../../src/lib/docExtractor.js';
 import { fetchPage } from '../../src/lib/fetchPage.js';
 
 /** Build a minimal fake fetch returning the given HTML body. */
@@ -332,6 +334,83 @@ describe('fetchPage — PDF detection by sniffing', () => {
     const fetchFn = async () => new Response(pdfBytes, { status: 200 });
     const page = await fetchPage({ url: 'https://example.org/x', fetchFn, pdfExtract: async () => 'pdf text' });
     expect(page.contentType).toBe('pdf');
+  });
+});
+
+describe('fetchPage — office documents', () => {
+  const docxBytes = zipSync({
+    '[Content_Types].xml': strToU8('<Types/>'),
+    'word/document.xml': strToU8('<w:document xmlns:w="x"><w:body><w:p><w:r><w:t>Arbeitsblatt Zach&#228;us</w:t></w:r></w:p></w:body></w:document>')
+  });
+  const serve = (bytes: Uint8Array | string, contentType?: string) => async () =>
+    new Response(bytes, { status: 200, headers: contentType ? { 'content-type': contentType } : {} });
+
+  it('reads a document announced by its MIME type through docExtract', async () => {
+    const page = await fetchPage({
+      url: 'https://example.org/M6.docx',
+      fetchFn: serve(docxBytes, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
+      docExtract: extractDocument
+    });
+    expect(page.contentType).toBe('document');
+    expect(page.documentKind).toBe('docx');
+    expect(page.readableText).toBe('Arbeitsblatt Zachäus');
+  });
+  it('reads a document served as octet-stream under a legacy extension by its magic bytes', async () => {
+    const page = await fetchPage({ url: 'https://example.org/UE1.DOC', fetchFn: serve(docxBytes, 'application/octet-stream'), docExtract: extractDocument });
+    expect(page.contentType).toBe('document');
+    expect(page.documentKind).toBe('docx');
+  });
+  it('reads a document served without a content-type', async () => {
+    const page = await fetchPage({ url: 'https://example.org/blob/abc', fetchFn: serve(docxBytes), docExtract: extractDocument });
+    expect(page.contentType).toBe('document');
+  });
+  it('rejects a zip that is not a document with unsupported_type', async () => {
+    const plain = zipSync({ 'a.txt': strToU8('x') });
+    await expect(fetchPage({ url: 'https://example.org/a.zip', fetchFn: serve(plain, 'application/zip'), docExtract: extractDocument })).rejects.toMatchObject({ code: 'unsupported_type' });
+  });
+  it('is unsupported_type without a docExtract callback (library default unchanged)', async () => {
+    await expect(fetchPage({ url: 'https://example.org/M6.docx', fetchFn: serve(docxBytes, 'application/msword') })).rejects.toMatchObject({ code: 'unsupported_type' });
+  });
+  it('applies the document size cap', async () => {
+    await expect(
+      fetchPage({ url: 'https://example.org/M6.docx', fetchFn: serve(docxBytes, 'application/msword'), docExtract: extractDocument, maxDocumentBytes: 10 })
+    ).rejects.toMatchObject({ code: 'page_too_large' });
+  });
+  it('still rejects a legacy binary PowerPoint only when nothing can read it', async () => {
+    const ole = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0, 0, 0]);
+    await expect(fetchPage({ url: 'https://example.org/x.ppt', fetchFn: serve(ole, 'application/vnd.ms-powerpoint'), docExtract: extractDocument })).rejects.toMatchObject({ code: 'unsupported_type' });
+  });
+});
+
+describe('fetchPage — sniffing for any non-text type, early size rejection', () => {
+  const docxBytes = zipSync({ 'word/document.xml': strToU8('<w:document xmlns:w="x"><w:p><w:r><w:t>Doc</w:t></w:r></w:p></w:document>') });
+  it('reads an HTML body served with a document MIME type (login page) as HTML', async () => {
+    const fetchFn = async () => new Response('<html><title>Login</title></html>', { status: 200, headers: { 'content-type': 'application/msword' } });
+    const page = await fetchPage({ url: 'https://example.org/x.doc', fetchFn, docExtract: extractDocument });
+    expect(page.contentType).toBe('html');
+    expect(page.title).toBe('Login');
+  });
+  it('reads a document served with an unknown or vendor-prefixed type by its magic bytes', async () => {
+    for (const ct of ['application/x-vnd.oasis.opendocument.text', 'application/vnd.ms-office', 'application/x-msword', 'image/png']) {
+      const fetchFn = async () => new Response(docxBytes, { status: 200, headers: { 'content-type': ct } });
+      const page = await fetchPage({ url: 'https://example.org/x', fetchFn, docExtract: extractDocument });
+      expect(page.contentType, ct).toBe('document');
+    }
+  });
+  it('rejects a body whose content-length exceeds the cap before reading it', async () => {
+    let bodyRead = false;
+    // highWaterMark 0: no eager pre-fill, so pull() only runs when the body is actually read
+    const stream = new ReadableStream<Uint8Array>({ pull(c) { bodyRead = true; c.enqueue(new Uint8Array(1024)); } }, { highWaterMark: 0 });
+    const fetchFn = async () => new Response(stream, { status: 200, headers: { 'content-type': 'application/pdf', 'content-length': String(100 * 1024 * 1024) } });
+    await expect(fetchPage({ url: 'https://example.org/big.pdf', fetchFn, pdfExtract: async () => 'x' })).rejects.toMatchObject({ code: 'page_too_large' });
+    expect(bodyRead).toBe(false);
+  });
+  it('stops reading an unbounded body at the cap', async () => {
+    let pulls = 0;
+    const stream = new ReadableStream<Uint8Array>({ pull(c) { pulls++; c.enqueue(new Uint8Array(1024 * 1024)); } });
+    const fetchFn = async () => new Response(stream, { status: 200, headers: { 'content-type': 'application/pdf' } });
+    await expect(fetchPage({ url: 'https://example.org/endless.pdf', fetchFn, pdfExtract: async () => 'x', maxBytes: 3 * 1024 * 1024 })).rejects.toMatchObject({ code: 'page_too_large' });
+    expect(pulls).toBeLessThan(10);
   });
 });
 
