@@ -17,6 +17,7 @@ import {
 } from './passageSelection.js';
 import { READ_ONLY } from './annotations.js';
 import { snippetOnlyReason } from '../server-info.js';
+import type { LicenseFilter } from '../license/classify.js';
 
 export interface FetchSpellResult {
   event: NostrEvent | null;
@@ -237,9 +238,10 @@ export function registerSearchPassagesTool(
   client: AMBRelayClient,
   spellClient: AMBRelayClient,
   indexer: IndexerClient,
-  opts: { openLicensesOnly?: boolean } = {}
+  opts: { licenseFilterMax?: LicenseFilter } = {}
 ): void {
-  const openLicensesOnly = opts.openLicensesOnly ?? true;
+  // Transitional adapter to the old boolean; B3/B4 replace it.
+  const openLicensesOnly = (opts.licenseFilterMax ?? 'any') !== 'any';
   server.registerTool(
     'search_passages',
     {

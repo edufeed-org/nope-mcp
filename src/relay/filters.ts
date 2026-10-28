@@ -3,6 +3,7 @@ import type { ContentType } from '../content/types.js';
 import { SNIPPET_KIND } from '../content/snippet.js';
 import { normalizeCommunityPubkey } from '../utils/community.js';
 import { OPEN_LICENSE_URIS } from '../license/open.js';
+import { CC_LICENSE_URIS, type LicenseFilter } from '../license/classify.js';
 
 /**
  * Parameters for searching AMB resources
@@ -31,15 +32,17 @@ export interface SearchParams {
   /** Maximum number of results (1-250, default: 20) */
   limit?: number;
   /**
-   * Restrict to openly licensed resources. Without free text (a pure
-   * field-filter or browse search) this appends one `license.id:<uri>` filter
-   * per OPEN_LICENSE_URIS entry — the relay ORs repeated filters on the same
-   * base field ("license") and ANDs them with every other field filter. With
-   * free text no license filter is added, because any field filter disables
+   * License tier to restrict to (absent = `any`, no restriction). For `open`
+   * or `cc-any` without free text (a pure field-filter or browse search) this
+   * appends one `license.id:<uri>` filter per OPEN_LICENSE_URIS /
+   * CC_LICENSE_URIS entry — the relay ORs repeated filters on the same base
+   * field ("license") and ANDs them with every other field filter. With free
+   * text no license filter is added, because any field filter disables
    * amb-relay's chunk rerank; the filter limit is over-fetched instead and the
-   * caller post-filters and trims to `limit`.
+   * caller post-filters and trims to `limit`. Callers pass the already
+   * clamped (effective) filter.
    */
-  openLicensesOnly?: boolean;
+  licenseFilter?: LicenseFilter;
 }
 
 export interface BuildFilterResult {
@@ -51,7 +54,7 @@ export interface BuildFilterResult {
   limit: number;
 }
 
-/** Over-fetch for a free-text open-licenses-only search, post-filtered client-side. */
+/** Over-fetch for a free-text license-filtered search, post-filtered client-side. */
 export const RESOURCE_LICENSE_OVERFETCH_FACTOR = 3;
 
 /**
@@ -163,11 +166,12 @@ export function buildFilter(params: SearchParams): BuildFilterResult {
       `educationalLevel.prefLabel.${language}:${escapeSearchValue(params.educationalLevelLabel)}`
     );
   }
-  if (params.openLicensesOnly) {
+  if (params.licenseFilter && params.licenseFilter !== 'any') {
     if (searchHasFreeText(searchParts.join(' '))) {
       filter.limit = Math.min(limit * RESOURCE_LICENSE_OVERFETCH_FACTOR, 250);
     } else {
-      for (const uri of OPEN_LICENSE_URIS) searchParts.push(`license.id:${uri}`);
+      const uris = params.licenseFilter === 'open' ? OPEN_LICENSE_URIS : CC_LICENSE_URIS;
+      for (const uri of uris) searchParts.push(`license.id:${uri}`);
     }
   }
 

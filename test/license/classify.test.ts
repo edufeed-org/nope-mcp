@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import type { NostrEvent } from 'nostr-tools';
 import {
   classifyLicense, accessLevelFor, matchesLicenseFilter, eventLicense, CC_LICENSE_URIS,
+  parseLicenseFilterMax, clampLicenseFilter,
 } from '../../src/license/classify.js';
 import { OPEN_LICENSE_URIS } from '../../src/license/open.js';
 
@@ -108,5 +109,60 @@ describe('eventLicense', () => {
       license: null,
       accessLevel: 'metadata-only',
     });
+  });
+});
+
+describe('parseLicenseFilterMax', () => {
+  it('defaults to any', () => {
+    expect(parseLicenseFilterMax({})).toBe('any');
+    expect(parseLicenseFilterMax({ LICENSE_FILTER_MAX: '' })).toBe('any');
+  });
+
+  it.each(['open', 'cc-any', 'any', ' CC-ANY '])('accepts LICENSE_FILTER_MAX=%s', (v) => {
+    expect(parseLicenseFilterMax({ LICENSE_FILTER_MAX: v })).toBe(v.trim().toLowerCase());
+  });
+
+  it('maps legacy OPEN_LICENSES_ONLY=true to open and warns once', () => {
+    const warn = vi.fn();
+    expect(parseLicenseFilterMax({ OPEN_LICENSES_ONLY: 'true' }, warn)).toBe('open');
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toMatch(/OPEN_LICENSES_ONLY.*deprecated.*LICENSE_FILTER_MAX/);
+  });
+
+  it('maps legacy OPEN_LICENSES_ONLY=false to any and warns once', () => {
+    const warn = vi.fn();
+    expect(parseLicenseFilterMax({ OPEN_LICENSES_ONLY: 'false' }, warn)).toBe('any');
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets LICENSE_FILTER_MAX win over the legacy variable, still warning once', () => {
+    const warn = vi.fn();
+    expect(parseLicenseFilterMax({ LICENSE_FILTER_MAX: 'cc-any', OPEN_LICENSES_ONLY: 'true' }, warn)).toBe('cc-any');
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not warn without the legacy variable', () => {
+    const warn = vi.fn();
+    parseLicenseFilterMax({ LICENSE_FILTER_MAX: 'open' }, warn);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('throws on an invalid value', () => {
+    expect(() => parseLicenseFilterMax({ LICENSE_FILTER_MAX: 'closed' })).toThrow(/LICENSE_FILTER_MAX/);
+  });
+});
+
+describe('clampLicenseFilter', () => {
+  it.each([
+    ['any', 'open', 'open', true],
+    ['cc-any', 'open', 'open', true],
+    ['any', 'cc-any', 'cc-any', true],
+    ['open', 'any', 'open', false],
+    ['open', 'cc-any', 'open', false],
+    ['cc-any', 'cc-any', 'cc-any', false],
+    [undefined, 'cc-any', 'cc-any', false],
+    [undefined, 'any', 'any', false],
+  ] as const)('requested %s under max %s -> %s (clamped %s)', (requested, max, effective, clamped) => {
+    expect(clampLicenseFilter(requested, max)).toEqual({ effective, clamped });
   });
 });

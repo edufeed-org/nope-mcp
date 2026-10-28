@@ -15,7 +15,7 @@ import { registerResources } from './resources/index.js';
 import { loadAuthorSets, setAuthorDirectory, setCalendarAuthorDirectory } from './authors.js';
 import { SERVER_NAME, SERVER_VERSION, buildServerInstructions } from './server-info.js';
 import { IndexerClient } from './indexer/client.js';
-import { parseOpenLicensesOnly } from './license/open.js';
+import { parseLicenseFilterMax } from './license/classify.js';
 
 // Configuration from environment
 const AMB_RELAYS = process.env.AMB_RELAYS?.split(',') || ['wss://relay.edufeed.org'];
@@ -25,7 +25,7 @@ const CALENDAR_RELAYS = process.env.CALENDAR_RELAYS?.split(',').filter(Boolean) 
 const CALENDAR_AUTHOR_SETS = process.env.CALENDAR_AUTHOR_SETS?.split(',').filter(Boolean) || [];
 const SPELL_RELAYS = process.env.SPELL_RELAYS?.split(',').filter(Boolean) || ['wss://relay.edufeed.org'];
 const indexer = IndexerClient.fromEnv(process.env.INDEXER_ENDPOINTS, process.env.INDEXER_API_TOKEN, process.env.INDEXER_API_TOKENS);
-const OPEN_LICENSES_ONLY = parseOpenLicensesOnly(process.env.OPEN_LICENSES_ONLY);
+const LICENSE_FILTER_MAX = parseLicenseFilterMax(process.env);
 
 async function main() {
   // All logs to stderr to not interfere with stdio protocol
@@ -46,14 +46,14 @@ async function main() {
   // Create MCP server
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { instructions: buildServerInstructions({ openLicensesOnly: OPEN_LICENSES_ONLY }) },
+    { instructions: buildServerInstructions({ licenseFilterMax: LICENSE_FILTER_MAX }) },
   );
 
   // Register tools and resources
   registerTools(server, ambClient, calendarClient, { read: true, extract: true, write: true }, {
     spellClient,
     indexer: indexer ?? undefined,
-    openLicensesOnly: OPEN_LICENSES_ONLY,
+    licenseFilterMax: LICENSE_FILTER_MAX,
   });
   registerResources(server, ambClient);
 

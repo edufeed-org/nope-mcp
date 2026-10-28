@@ -11,7 +11,7 @@ import { normalizeLicenseUri, OPEN_LICENSE_URIS } from './open.js';
  *
  * Groups:
  * - `open`:  CC0, PDM, CC BY, CC BY-SA — the existing open-license set.
- * - `cc`:    every other CC license (BY-NC, BY-SA-NC, BY-ND, BY-NC-ND).
+ * - `cc`:    every other CC license (BY-NC, BY-NC-SA, BY-ND, BY-NC-ND).
  * - `other`: a present `license:id` that isn't a recognized CC/PD URI.
  * - `none`:  no `license:id` at all.
  * `open` and `cc` both grant full access; `other` and `none` are
@@ -93,6 +93,62 @@ export function matchesLicenseFilter(group: LicenseGroup, filter: LicenseFilter)
   if (filter === 'open') return group === 'open';
   if (filter === 'cc-any') return group === 'open' || group === 'cc';
   return true; // 'any' admits open, cc, other and none
+}
+
+const LICENSE_FILTER_RANK: Record<LicenseFilter, number> = { open: 0, 'cc-any': 1, any: 2 };
+
+function isLicenseFilter(value: string): value is LicenseFilter {
+  return Object.hasOwn(LICENSE_FILTER_RANK, value);
+}
+
+/**
+ * The operator ceiling for search license filtering, read once at startup.
+ * `LICENSE_FILTER_MAX` (open | cc-any | any, default any) wins; an invalid
+ * value throws so a typo can't silently widen or narrow what is served.
+ * The legacy `OPEN_LICENSES_ONLY` (true unless false/0/no/off) is honoured
+ * only when LICENSE_FILTER_MAX is unset — true maps to `open`, false to
+ * `any` — and its presence always logs one deprecation line via `warn`.
+ */
+export function parseLicenseFilterMax(
+  env: { LICENSE_FILTER_MAX?: string; OPEN_LICENSES_ONLY?: string },
+  warn: (m: string) => void = console.warn
+): LicenseFilter {
+  const legacy = env.OPEN_LICENSES_ONLY?.trim().toLowerCase();
+  const max = env.LICENSE_FILTER_MAX?.trim().toLowerCase();
+
+  if (legacy) {
+    warn(
+      'OPEN_LICENSES_ONLY is deprecated; use LICENSE_FILTER_MAX=open|cc-any|any instead' +
+        (max ? ' (ignored: LICENSE_FILTER_MAX is set).' : '.')
+    );
+  }
+
+  if (max) {
+    if (!isLicenseFilter(max)) {
+      throw new Error(
+        `Invalid LICENSE_FILTER_MAX "${env.LICENSE_FILTER_MAX}": expected open, cc-any or any.`
+      );
+    }
+    return max;
+  }
+  if (legacy) return ['false', '0', 'no', 'off'].includes(legacy) ? 'any' : 'open';
+  return 'any';
+}
+
+/**
+ * Applies the operator ceiling to a requested filter (ordered open < cc-any
+ * < any). No request means the ceiling itself; a wider request is narrowed
+ * to the ceiling and reported as clamped.
+ */
+export function clampLicenseFilter(
+  requested: LicenseFilter | undefined,
+  max: LicenseFilter
+): { effective: LicenseFilter; clamped: boolean } {
+  if (requested === undefined) return { effective: max, clamped: false };
+  if (LICENSE_FILTER_RANK[requested] > LICENSE_FILTER_RANK[max]) {
+    return { effective: max, clamped: true };
+  }
+  return { effective: requested, clamped: false };
 }
 
 /** A kind-30142 event's `license:id` tag, classified with its access level. */

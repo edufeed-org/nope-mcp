@@ -8,6 +8,7 @@ import { eventToAMBResource, toSimplifiedResource } from '../utils/transform.js'
 import { hasContentTransform, transformContentEvent } from '../content/transform.js';
 import { READ_ONLY } from './annotations.js';
 import { eventHasOpenLicense } from '../license/open.js';
+import type { LicenseFilter } from '../license/classify.js';
 
 /** Decode an naddr into a d-tag + author + kind for getByDTag; null on malformed/non-naddr input. */
 export function naddrToLookup(
@@ -133,9 +134,10 @@ function openLicenseNote(openLicensesOnly: boolean): string {
 export function registerGetTool(
   server: McpServer,
   client: AMBRelayClient,
-  options?: { openLicensesOnly?: boolean }
+  options?: { licenseFilterMax?: LicenseFilter }
 ): void {
-  const openLicensesOnly = options?.openLicensesOnly ?? true;
+  // Transitional adapter to the old boolean; B3/B4 replace it.
+  const openLicensesOnly = (options?.licenseFilterMax ?? 'any') !== 'any';
   server.registerTool(
     'get_resource',
     {

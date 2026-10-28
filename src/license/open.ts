@@ -72,8 +72,3 @@ export const OPEN_LICENSE_URIS: readonly string[] = [
   'https://creativecommons.org/licenses/by/2.5/',
   'https://creativecommons.org/licenses/by-sa/4.0/deed.de',
 ];
-
-/** OPEN_LICENSES_ONLY env: on unless explicitly false/0/no/off. */
-export function parseOpenLicensesOnly(value: string | undefined): boolean {
-  return !['false', '0', 'no', 'off'].includes((value ?? '').trim().toLowerCase());
-}

@@ -151,7 +151,7 @@ describe('runGetResource openLicense flag', () => {
 
 function getResourceDescription(openLicensesOnly: boolean): string {
   const session = buildSessionServer(['wss://relay.edufeed.org'], ['wss://relay.edufeed.org'], undefined, {
-    openLicensesOnly,
+    licenseFilterMax: openLicensesOnly ? 'open' : 'any',
   });
   const registry = (
     session.server as unknown as { _registeredTools: Record<string, { description?: string }> }

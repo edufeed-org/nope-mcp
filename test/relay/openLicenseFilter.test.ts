@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildFilter, buildContentFilter, searchHasFreeText } from '../../src/relay/filters.js';
 import { OPEN_LICENSE_URIS } from '../../src/license/open.js';
+import { CC_LICENSE_URIS } from '../../src/license/classify.js';
 
 /**
  * Port of the relay's NIP-50 field-filter handling
@@ -44,20 +45,20 @@ describe('searchHasFreeText (mirror of amb-relay searchHasFreeText)', () => {
   });
 });
 
-describe('buildFilter with openLicensesOnly', () => {
+describe('buildFilter with licenseFilter', () => {
   it('adds no license filter to a free-text search (keeps relay chunk rerank) and over-fetches', () => {
-    const { filter, search, limit } = buildFilter({ query: 'mathematik', limit: 20, openLicensesOnly: true });
+    const { filter, search, limit } = buildFilter({ query: 'mathematik', limit: 20, licenseFilter: 'open' });
     expect(search).toBe('mathematik');
     expect(filter.limit).toBe(60);
     expect(limit).toBe(20);
   });
 
   it('caps the free-text over-fetch at 250', () => {
-    expect(buildFilter({ query: 'x', limit: 200, openLicensesOnly: true }).filter.limit).toBe(250);
+    expect(buildFilter({ query: 'x', limit: 200, licenseFilter: 'open' }).filter.limit).toBe(250);
   });
 
   it('treats free text next to caller field filters as free text', () => {
-    const { search } = buildFilter({ query: 'bruchrechnung', publisherName: 'LEHRE LADEN', openLicensesOnly: true });
+    const { search } = buildFilter({ query: 'bruchrechnung', publisherName: 'LEHRE LADEN', licenseFilter: 'open' });
     expect(search).toBe('bruchrechnung publisher.name:"LEHRE LADEN"');
   });
 
@@ -66,7 +67,7 @@ describe('buildFilter with openLicensesOnly', () => {
       publisherName: 'LEHRE LADEN',
       subjectLabel: 'Mathematik',
       limit: 20,
-      openLicensesOnly: true,
+      licenseFilter: 'open',
     });
     const { raw, groups } = relayFilterGroups(search);
     expect(raw).toEqual([]);
@@ -79,20 +80,48 @@ describe('buildFilter with openLicensesOnly', () => {
   });
 
   it('treats a field-filter-only query string as no free text', () => {
-    const { search } = buildFilter({ query: 'type:academic', openLicensesOnly: true });
+    const { search } = buildFilter({ query: 'type:academic', licenseFilter: 'open' });
     expect(relayFilterGroups(search).groups.has('license')).toBe(true);
   });
 
   it('turns a filterless browse into a license-only search', () => {
-    const { search } = buildFilter({ openLicensesOnly: true });
+    const { search } = buildFilter({ licenseFilter: 'open' });
     const { raw, groups } = relayFilterGroups(search);
     expect(raw).toEqual([]);
     expect([...groups.keys()]).toEqual(['license']);
   });
 
-  it('adds nothing and keeps the limit when the switch is off or absent', () => {
-    expect(buildFilter({ query: 'x', openLicensesOnly: false })).toMatchObject({ search: 'x', filter: { limit: 20 } });
+  it('adds nothing and keeps the limit for any or an absent filter', () => {
+    expect(buildFilter({ query: 'x', licenseFilter: 'any' })).toMatchObject({ search: 'x', filter: { limit: 20 } });
     expect(buildFilter({ publisherName: 'X' }).search).toBe('publisher.name:X');
+  });
+
+  it('open without free text pushes exactly the OPEN_LICENSE_URIS tokens', () => {
+    const { search } = buildFilter({ creatorName: 'C', licenseFilter: 'open' });
+    expect(relayFilterGroups(search).groups.get('license')).toEqual(
+      OPEN_LICENSE_URIS.map((u) => `license.id:=${u}`)
+    );
+  });
+
+  it('cc-any without free text pushes the CC_LICENSE_URIS tokens', () => {
+    const { search, filter } = buildFilter({ creatorName: 'C', limit: 20, licenseFilter: 'cc-any' });
+    expect(relayFilterGroups(search).groups.get('license')).toEqual(
+      CC_LICENSE_URIS.map((u) => `license.id:=${u}`)
+    );
+    expect(filter.limit).toBe(20);
+  });
+
+  it('any without free text pushes no license token and does not over-fetch', () => {
+    const { search, filter } = buildFilter({ creatorName: 'C', limit: 20, licenseFilter: 'any' });
+    expect(search).not.toContain('license.id:');
+    expect(filter.limit).toBe(20);
+  });
+
+  it('cc-any with free text over-fetches and pushes no license tokens', () => {
+    const { search, filter, limit } = buildFilter({ query: 'mathe', limit: 20, licenseFilter: 'cc-any' });
+    expect(search).toBe('mathe');
+    expect(filter.limit).toBe(60);
+    expect(limit).toBe(20);
   });
 });
 

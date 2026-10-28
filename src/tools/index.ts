@@ -26,6 +26,7 @@ import { registerExtractTool } from './extract.js';
 import { registerSearchContentTool } from './searchContent.js';
 import { registerSearchPassagesTool } from './searchPassages.js';
 import type { IndexerClient } from '../indexer/client.js';
+import type { LicenseFilter } from '../license/classify.js';
 
 export interface ToolProfile {
   read?: boolean;
@@ -48,17 +49,17 @@ export function registerTools(
     defaultsFromConnectorUrl?: boolean;
     spellClient?: AMBRelayClient;
     indexer?: IndexerClient;
-    /** Search results hold openly licensed resources only (OPEN_LICENSES_ONLY, default true). */
-    openLicensesOnly?: boolean;
+    /** Operator ceiling for search license filtering (LICENSE_FILTER_MAX, default any). */
+    licenseFilterMax?: LicenseFilter;
   },
 ): void {
   if (profile.read) {
     // Query / read tools
     const passagesAvailable = !!(options?.indexer && options?.spellClient);
-    const openLicensesOnly = options?.openLicensesOnly ?? true;
-    registerSearchTool(server, client, { openLicensesOnly });
-    registerSearchContentTool(server, client, { passagesAvailable, openLicensesOnly });
-    registerGetTool(server, client, { openLicensesOnly });
+    const licenseFilterMax = options?.licenseFilterMax ?? 'any';
+    registerSearchTool(server, client, { licenseFilterMax });
+    registerSearchContentTool(server, client, { passagesAvailable, licenseFilterMax });
+    registerGetTool(server, client, { licenseFilterMax });
     registerBrowseSubjectsTool(server, client);
     registerBrowseResourceTypesTool(server, client);
     registerBrowseEducationalLevelsTool(server, client);
@@ -71,7 +72,7 @@ export function registerTools(
     registerResolvePublisherTool(server, client);
     if (calendarClient) registerCalendarTools(server, calendarClient);
     if (options?.indexer && options?.spellClient) {
-      registerSearchPassagesTool(server, client, options.spellClient, options.indexer, { openLicensesOnly });
+      registerSearchPassagesTool(server, client, options.spellClient, options.indexer, { licenseFilterMax });
     }
   }
 

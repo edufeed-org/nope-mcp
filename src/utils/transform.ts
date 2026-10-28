@@ -2,6 +2,7 @@ import { nip19, type NostrEvent } from 'nostr-tools';
 import type { AmbLearningResourceBase, LocalizedString } from 'amb-nostr-converter';
 import type { AMBResourceWithMetadata } from '../types/amb.js';
 import { getLabel } from '../skos/parser.js';
+import { classifyLicense, accessLevelFor, type AccessLevel, type LicenseInfo } from '../license/classify.js';
 
 /**
  * Base URL of the edufeed-app frontend. When set, `toSimplifiedResource`
@@ -219,6 +220,8 @@ export function toSimplifiedResource(ambResource: AMBResourceWithMetadata, langu
     resource.mainEntityOfPage?.find((m) => /^https?:\/\//.test(m.id))?.id ??
     (/^https?:\/\//.test(resource.id) ? resource.id : undefined);
 
+  const { group: licenseGroup, license } = classifyLicense(resource.license?.id);
+
   return {
     id: resource.id,
     identifier: resource.id,
@@ -243,8 +246,9 @@ export function toSimplifiedResource(ambResource: AMBResourceWithMetadata, langu
     creator: resource.creator?.map(c => ({ name: c.name, type: c.type })),
     publisher: resource.publisher?.map(p => ({ name: p.name, type: p.type })),
 
-    // Access
-    license: resource.license ? { id: resource.license.id } : undefined,
+    // Access — license tier from the event's license:id (see license/classify.ts)
+    license,
+    accessLevel: accessLevelFor(licenseGroup),
     isAccessibleForFree: resource.isAccessibleForFree,
 
     // Language
@@ -295,7 +299,10 @@ export interface SimplifiedAMBResource {
   creator?: Array<{ name: string; type: string }>;
   publisher?: Array<{ name: string; type: string }>;
 
-  license?: { id: string };
+  /** Classified `license:id`; null when the resource carries no license. */
+  license: LicenseInfo | null;
+  /** `full` for CC/PD licenses, `metadata-only` for any other or no license. */
+  accessLevel: AccessLevel;
   isAccessibleForFree?: boolean;
 
   inLanguage?: string[];

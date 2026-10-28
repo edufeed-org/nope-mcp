@@ -8,7 +8,9 @@ import { buildFilter, type SearchParams } from '../relay/filters.js';
 import { eventsToAMBResources, toSimplifiedResource, type SimplifiedAMBResource } from '../utils/transform.js';
 import { findActorCandidates, type ActorCandidate } from './resolvePublisher.js';
 import { READ_ONLY } from './annotations.js';
-import { eventHasOpenLicense } from '../license/open.js';
+import {
+  clampLicenseFilter, eventLicense, matchesLicenseFilter, type LicenseFilter,
+} from '../license/classify.js';
 
 export interface ResourceSearchResult {
   total: number;
@@ -21,7 +23,17 @@ export interface ResourceSearchResult {
   relaysIncomplete?: string[];
   /** Human/LLM-facing warning when relaysIncomplete is non-empty. */
   warning?: string;
+  /** The license filter actually applied (the request, narrowed to the server ceiling). */
+  licenseFilter: LicenseFilter;
+  /** Present when the requested licenseFilter was wider than the server ceiling allows. */
+  licenseFilterClamped?: true;
 }
+
+/** Which licenses a non-`any` filter admits, for the zero-match hint. */
+const LICENSE_FILTER_SCOPE: Record<Exclude<LicenseFilter, 'any'>, string> = {
+  open: 'CC0, Public Domain, CC BY, CC BY-SA',
+  'cc-any': 'Creative Commons or Public Domain',
+};
 
 /**
  * Execute a resource search. When a publisherName/creatorName filter matches
@@ -33,21 +45,25 @@ export interface ResourceSearchResult {
 export async function runResourceSearch(
   client: Pick<AMBRelayClient, 'search' | 'query'>,
   params: SearchParams,
-  relays?: string[]
+  relays?: string[],
+  opts: { licenseFilterMax?: LicenseFilter } = {}
 ): Promise<ResourceSearchResult> {
-  const { filter, search, limit } = buildFilter(params);
+  const { effective, clamped } = clampLicenseFilter(params.licenseFilter, opts.licenseFilterMax ?? 'any');
+  const { filter, search, limit } = buildFilter({ ...params, licenseFilter: effective });
 
   const diag = newRelayDiagnostics();
   const fetched = search
     ? await client.search(search, filter, relays, diag)
     : await client.query(filter, relays, diag);
-  // Open-licenses-only: a free-text search was over-fetched without a relay
-  // license filter (keeps chunk rerank), so this is the filter; a pure
-  // field-filter search carried license.id filters and this is the safety net
-  // for spellings missing from OPEN_LICENSE_URIS. Relay order is preserved.
-  const events = params.openLicensesOnly
-    ? fetched.filter(eventHasOpenLicense).slice(0, limit)
-    : fetched;
+  // License filter (open / cc-any): a free-text search was over-fetched
+  // without a relay license filter (keeps chunk rerank), so this is the
+  // filter; a pure field-filter search carried license.id filters and this is
+  // the safety net for spellings missing from OPEN_LICENSE_URIS /
+  // CC_LICENSE_URIS. Relay order is preserved.
+  const events =
+    effective === 'any'
+      ? fetched
+      : fetched.filter((e) => matchesLicenseFilter(eventLicense(e).group, effective)).slice(0, limit);
 
   const resources = eventsToAMBResources(events);
   const lang = params.language || 'de';
@@ -56,6 +72,8 @@ export async function runResourceSearch(
     total: simplified.length,
     resources: simplified,
     ...relayDiagnosticsFields(diag),
+    licenseFilter: effective,
+    ...(clamped ? { licenseFilterClamped: true as const } : {}),
   };
 
   const actorName = params.publisherName ?? params.creatorName;
@@ -74,10 +92,10 @@ export async function runResourceSearch(
         `"${actorName}"; no similar actor name was found either. The actor may not exist in ` +
         `this corpus — try resolve_publisher, resolve_author, or a free-text query search.`;
     }
-    if (params.openLicensesOnly) {
+    if (effective !== 'any') {
       result.hint +=
-        ' Only openly licensed resources (CC0, Public Domain, CC BY, CC BY-SA) are searched, ' +
-        'so an actor whose resources are all NC/ND or unlicensed returns nothing here.';
+        ` Only resources under ${LICENSE_FILTER_SCOPE[effective]} licenses were searched ` +
+        `(licenseFilter: ${effective}); resources under other licenses or without a license are left out.`;
     }
   }
 
@@ -90,9 +108,9 @@ export async function runResourceSearch(
 export function registerSearchTool(
   server: McpServer,
   client: AMBRelayClient,
-  opts: { openLicensesOnly?: boolean } = {}
+  opts: { licenseFilterMax?: LicenseFilter } = {}
 ): void {
-  const openLicensesOnly = opts.openLicensesOnly ?? true;
+  const licenseFilterMax = opts.licenseFilterMax ?? 'any';
   server.registerTool(
     'search_resources',
     {
@@ -101,9 +119,14 @@ export function registerSearchTool(
         'Search for educational resources (learning materials, courses, videos, etc.) using ' +
         'full-text search and metadata filters. Returns resources matching the query from the ' +
         'AMB relay. ' +
-        (openLicensesOnly
-          ? 'Only openly licensed resources are returned (CC0, Public Domain, CC BY, CC BY-SA); ' +
-            'NC/ND, all-rights-reserved and unlicensed resources are left out. '
+        'Every learning resource is returned by default, whatever its license; each result ' +
+        'carries license ({id, label}, or null when unlicensed) and accessLevel ("full" for ' +
+        'Creative Commons and Public Domain, "metadata-only" otherwise). licenseFilter narrows ' +
+        'the results: "open" = CC0, Public Domain, CC BY, CC BY-SA; "cc-any" = all Creative ' +
+        'Commons licenses and Public Domain; "any" = also unlicensed and all-rights-reserved ' +
+        'resources. When citing a resource, always name its creator and publisher. ' +
+        (licenseFilterMax !== 'any'
+          ? `This server limits results to licenseFilter '${licenseFilterMax}'. `
           : '') +
         'NOTE: the metadata filters (publisherName, creatorName, subjectLabel, ' +
         'resourceTypeLabel, educationalLevelLabel) are EXACT full-string matches against the ' +
@@ -176,6 +199,14 @@ export function registerSearchTool(
           .optional()
           .default(20)
           .describe('Maximum number of results (1-250, default: 20)'),
+        licenseFilter: z
+          .enum(['open', 'cc-any', 'any'])
+          .optional()
+          .describe(
+            'Restrict results by license: "open" (CC0, Public Domain, CC BY, CC BY-SA), ' +
+              '"cc-any" (all Creative Commons and Public Domain) or "any" (default: every ' +
+              'resource, including unlicensed and all-rights-reserved).'
+          ),
         relays: z
           .array(z.string())
           .optional()
@@ -205,10 +236,10 @@ export function registerSearchTool(
         until: params.until,
         authors: params.authors,
         limit: params.limit,
-        openLicensesOnly,
+        licenseFilter: params.licenseFilter,
       };
 
-      const result = await runResourceSearch(client, searchParams, relaysSearched);
+      const result = await runResourceSearch(client, searchParams, relaysSearched, { licenseFilterMax });
       const notSearched = relaysNotSearched(client, relaysSearched);
 
       return {

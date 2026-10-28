@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import type { NostrEvent } from 'nostr-tools';
 import {
-  isOpenLicense, normalizeLicenseUri, OPEN_LICENSE_URIS, eventHasOpenLicense, parseOpenLicensesOnly,
+  isOpenLicense, normalizeLicenseUri, OPEN_LICENSE_URIS, eventHasOpenLicense,
 } from '../../src/license/open.js';
 
 interface Fixture { licenseIds: { id: string; count: number }[] }
@@ -109,17 +109,5 @@ describe('eventHasOpenLicense', () => {
   });
   it('treats a missing license as not open', () => {
     expect(eventHasOpenLicense(ev([['d', 'x']]))).toBe(false);
-  });
-});
-
-describe('parseOpenLicensesOnly', () => {
-  it('defaults to true', () => {
-    expect(parseOpenLicensesOnly(undefined)).toBe(true);
-    expect(parseOpenLicensesOnly('')).toBe(true);
-    expect(parseOpenLicensesOnly('true')).toBe(true);
-    expect(parseOpenLicensesOnly('1')).toBe(true);
-  });
-  it.each(['false', 'FALSE', '0', 'no', 'off', ' false '])('is false for %s', (v) => {
-    expect(parseOpenLicensesOnly(v)).toBe(false);
   });
 });

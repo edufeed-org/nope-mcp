@@ -10,6 +10,7 @@ import { parseSnippets, attachSnippets, SNIPPET_KIND } from '../content/snippet.
 import type { SimplifiedContentResult } from '../content/types.js';
 import { READ_ONLY } from './annotations.js';
 import { eventHasOpenLicense } from '../license/open.js';
+import type { LicenseFilter } from '../license/classify.js';
 
 /**
  * Open-licenses-only over-fetch: the license filter runs client-side (a
@@ -64,9 +65,10 @@ export async function runContentSearch(
 export function registerSearchContentTool(
   server: McpServer,
   client: AMBRelayClient,
-  opts?: { passagesAvailable?: boolean; openLicensesOnly?: boolean }
+  opts?: { passagesAvailable?: boolean; licenseFilterMax?: LicenseFilter }
 ): void {
-  const openLicensesOnly = opts?.openLicensesOnly ?? true;
+  // Transitional adapter to the old boolean; B3/B4 replace it.
+  const openLicensesOnly = (opts?.licenseFilterMax ?? 'any') !== 'any';
   const intentSentence = opts?.passagesAvailable
     ? 'This is the tool for DISCOVERY intent — the user wants materials to browse ' +
       '("finde/suche/empfiehl Materialien zu X"): present the items. For QUESTION ' +

@@ -6,6 +6,7 @@ import { instrumentToolLogging } from './tools/logging.js';
 import { registerResources } from './resources/index.js';
 import { SERVER_NAME, SERVER_VERSION, buildServerInstructions } from './server-info.js';
 import type { IndexerClient } from './indexer/client.js';
+import type { LicenseFilter } from './license/classify.js';
 
 export interface SessionServer {
   server: McpServer;
@@ -30,13 +31,13 @@ export function buildSessionServer(
     defaultsFromConnectorUrl?: boolean;
     spellClient?: AMBRelayClient;
     indexer?: IndexerClient;
-    openLicensesOnly?: boolean;
+    licenseFilterMax?: LicenseFilter;
   },
 ): SessionServer {
-  const openLicensesOnly = options?.openLicensesOnly ?? true;
+  const licenseFilterMax = options?.licenseFilterMax ?? 'any';
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { instructions: buildServerInstructions({ openLicensesOnly }) },
+    { instructions: buildServerInstructions({ licenseFilterMax }) },
   );
   // Before registerTools: the patch only sees tools registered after it.
   instrumentToolLogging(server);
@@ -48,7 +49,7 @@ export function buildSessionServer(
     defaultsFromConnectorUrl: options?.defaultsFromConnectorUrl,
     spellClient: options?.spellClient,
     indexer: options?.indexer,
-    openLicensesOnly,
+    licenseFilterMax,
   });
   registerResources(server, ambClient);
 

@@ -1,3 +1,5 @@
+import type { LicenseFilter } from './license/classify.js';
+
 export const SERVER_NAME = 'nope-mcp';
 export const SERVER_VERSION = '0.6.1';
 
@@ -51,7 +53,9 @@ function openingParagraph(openLicensesOnly: boolean): string {
  * Build the MCP server `instructions` string. Config-aware so it never
  * misdescribes the open-license policy when OPEN_LICENSES_ONLY is off.
  */
-export function buildServerInstructions({ openLicensesOnly }: { openLicensesOnly: boolean }): string {
+export function buildServerInstructions({ licenseFilterMax }: { licenseFilterMax: LicenseFilter }): string {
+  // Transitional adapter to the old boolean; B3/B4 replace it.
+  const openLicensesOnly = licenseFilterMax !== 'any';
   return `${openingParagraph(openLicensesOnly)}
 
 Two flows cover most questions:
