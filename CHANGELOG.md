@@ -6,6 +6,14 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-28
+
+### Fixed
+
+- `package-lock.json` regenerated with npm 10 (the Docker image's npm): the
+  0.6.0 lock written by npm 11 omitted a nested `web-streams-polyfill` entry,
+  so `npm ci` failed in CI and no 0.6.0 image was published.
+
 ## [0.6.0] - 2026-10-28
 
 ### Added
