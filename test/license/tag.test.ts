@@ -28,6 +28,17 @@ describe('licenseTagValue', () => {
     expect(licenseTagValue(ev([['license:id', ''], ['license', uri]]))).toBe(uri);
   });
 
+  it('falls back to license when license:id is whitespace-only (Go trims too)', () => {
+    const uri = 'https://creativecommons.org/licenses/by/4.0/';
+    expect(licenseTagValue(ev([['license:id', '  '], ['license', uri]]))).toBe(uri);
+  });
+
+  it('trims the chosen value', () => {
+    const uri = 'https://creativecommons.org/licenses/by/4.0/';
+    expect(licenseTagValue(ev([['license:id', ` ${uri} `]]))).toBe(uri);
+    expect(licenseTagValue(ev([['license', ` ${uri}\n`]]))).toBe(uri);
+  });
+
   it('returns undefined when neither tag is present', () => {
     expect(licenseTagValue(ev([['d', 'x']]))).toBeUndefined();
   });

@@ -3,7 +3,8 @@ import type { NostrEvent } from 'nostr-tools';
 /**
  * A kind-30142 event's license, with the same tag-parity amb-indexer uses
  * (worker.go readLicenseTag): prefer `license:id`, fall back to the plain
- * `license` tag when `license:id` is absent or empty. Some events on the
+ * `license` tag when `license:id` is absent, empty or whitespace-only
+ * (values are trimmed, as in Go's strings.TrimSpace). Some events on the
  * AMB relays carry only the plain `license` tag (e.g. a single
  * `["license", "https://creativecommons.org/licenses/by/4.0/"]`); without
  * this fallback amb-mcp showed them as unlicensed/metadata-only while the
@@ -16,7 +17,7 @@ import type { NostrEvent } from 'nostr-tools';
  * calls this helper is what catches them.
  */
 export function licenseTagValue(event: NostrEvent): string | undefined {
-  const id = event.tags.find((t) => t[0] === 'license:id')?.[1];
+  const id = event.tags.find((t) => t[0] === 'license:id')?.[1]?.trim();
   if (id) return id;
-  return event.tags.find((t) => t[0] === 'license')?.[1] || undefined;
+  return event.tags.find((t) => t[0] === 'license')?.[1]?.trim() || undefined;
 }
