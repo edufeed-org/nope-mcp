@@ -26,7 +26,28 @@ export interface RelayStatus {
   url: string;
 }
 
-const DEFAULT_TIMEOUT = 10000;
+const DEFAULT_TIMEOUT = 25000;
+
+/**
+ * Per-query relay timeout, read once per client construction (not cached at
+ * module scope, so tests can flip the env var freely). `RELAY_QUERY_TIMEOUT_MS`
+ * default 25000 — the amb-relay's own search budget is ~20s, and the previous
+ * 10s default cut off slow-but-answering relays (e.g. sodix under reindex
+ * load, answering in 11-17s) before they could finish, discarding every
+ * event already collected. An invalid value fails fast at startup rather
+ * than silently falling back.
+ */
+export function parseRelayQueryTimeoutMs(env: { RELAY_QUERY_TIMEOUT_MS?: string }): number {
+  const raw = env.RELAY_QUERY_TIMEOUT_MS?.trim();
+  if (!raw) return DEFAULT_TIMEOUT;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(
+      `Invalid RELAY_QUERY_TIMEOUT_MS "${env.RELAY_QUERY_TIMEOUT_MS}": expected a positive number of milliseconds.`
+    );
+  }
+  return n;
+}
 
 /**
  * A per-call relay selection named a relay that is neither in the default set
@@ -100,7 +121,7 @@ export class AMBRelayClient {
     relayUrls: string | string[],
     options?: { extraRelays?: string[]; queryTimeoutMs?: number }
   ) {
-    this.queryTimeoutMs = options?.queryTimeoutMs ?? DEFAULT_TIMEOUT;
+    this.queryTimeoutMs = options?.queryTimeoutMs ?? parseRelayQueryTimeoutMs(process.env);
     // The SimplePool TS signature only declares `enablePing|enableReconnect`,
     // but its runtime constructor spreads `...options` straight into
     // AbstractSimplePool, which honors `websocketImplementation`. Cast to skip
@@ -329,11 +350,14 @@ export class AMBRelayClient {
     const unreachable: string[] = [];
     const connectedRelays: string[] = [];
     const settled = new Set<string>();
+    // Hoisted (not local to the executor below) so the timeout branch can
+    // close every open subscription instead of leaking it, and so `events`
+    // — already populated by onevent as they arrive — survives the race
+    // even when the timeout promise is the one that settles first.
+    const subs: Array<{ close(reason?: string): void }> = [];
 
     const result = await Promise.race([
       new Promise<NostrEvent[]>(async (resolve, reject) => {
-        const subs: Array<{ close(reason?: string): void }> = [];
-
         for (const url of relays) {
           try {
             await this.pool.ensureRelay(url);
@@ -399,13 +423,17 @@ export class AMBRelayClient {
         setTimeout(() => reject(new Error('Query timeout')), this.queryTimeoutMs)
       ),
     ]).catch((err) => {
+      // Close every open subscription so a timeout doesn't leak the socket
+      // (previously only the per-relay 'eose' path closed it).
+      for (const sub of subs) sub.close('timeout');
       // Strict callers need outage/timeout distinguishable from an empty
-      // result; everyone else keeps the lenient empty-array behavior.
+      // result; everyone else gets whatever events arrived before the
+      // deadline instead of having them discarded.
       if (strict) {
         if (err instanceof RelayUnreachableError) throw err;
         throw new RelayUnreachableError(relays, 'query timed out before EOSE');
       }
-      return [] as NostrEvent[];
+      return events;
     });
 
     if (opts?.diag) {
@@ -430,31 +458,47 @@ export class AMBRelayClient {
       return [];
     }
 
-    // Query with timeout
+    // Reimplements pool.querySync's subscribe-until-every-relay-EOSEs
+    // behavior directly (rather than calling querySync) so a timeout can
+    // return the events collected so far instead of discarding them —
+    // querySync resolves only once, atomically, with no way to read its
+    // partial state. `events` is pushed to as onevent fires, so it already
+    // holds whatever arrived before the deadline when the timeout wins the
+    // race below.
+    const events: NostrEvent[] = [];
+    const seen = new Set<string>();
     let timedOut = false;
-    const events = await Promise.race([
-      this.pool.querySync(relays, filter),
-      new Promise<NostrEvent[]>((_, reject) =>
-        setTimeout(() => reject(new Error('Query timeout')), this.queryTimeoutMs)
-      ),
-    ]).catch(() => {
-      timedOut = true;
-      return [] as NostrEvent[];
+
+    await new Promise<void>((resolve) => {
+      let timer: ReturnType<typeof setTimeout>;
+      const closer = this.pool.subscribeManyEose(relays, filter, {
+        onevent: (event: NostrEvent) => {
+          if (!seen.has(event.id)) {
+            seen.add(event.id);
+            events.push(event);
+          }
+        },
+        onclose: () => {
+          clearTimeout(timer);
+          resolve();
+        },
+      });
+      timer = setTimeout(() => {
+        timedOut = true;
+        closer.close('timeout'); // stop leaking the subscription/socket
+        resolve();
+      }, this.queryTimeoutMs);
     });
+
     if (diag) {
       diag.unreachable = [];
-      // querySync can't attribute a stall to one relay, so on timeout every
-      // queried relay is reported as possibly-incomplete (coarse but honest).
+      // The merged multi-relay close reasons don't cleanly attribute a
+      // stall to one relay, so on timeout every queried relay is reported
+      // as possibly-incomplete (coarse but honest, same as before).
       diag.timedOut = timedOut ? relays : [];
     }
 
-    // Deduplicate by event ID (same event from multiple relays)
-    const seen = new Set<string>();
-    return events.filter((event) => {
-      if (seen.has(event.id)) return false;
-      seen.add(event.id);
-      return true;
-    });
+    return events;
   }
 
   // ============ Relay info ============

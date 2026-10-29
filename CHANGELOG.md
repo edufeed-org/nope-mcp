@@ -18,6 +18,14 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
   are under licenses this server doesn't return instead. The actor-spelling
   hint is now shown only when the actor name truly matched nothing,
   regardless of the license filter.
+- Relay query timeout (`search_resources`, `search_content`, every other
+  relay read) no longer discards events already received when it fires —
+  it now returns them and flags the relay as incomplete in the response's
+  `relaysIncomplete`/diagnostics instead of a misleading empty/partial
+  result (observed on `sodix` answering in 11-17s under reindex load,
+  past the old 10s budget). The timeout is now configurable via
+  `RELAY_QUERY_TIMEOUT_MS` (default 25000, up from 10000) and closes the
+  stalled subscription instead of leaking it.
 
 ## [0.7.0] - 2026-10-29
 

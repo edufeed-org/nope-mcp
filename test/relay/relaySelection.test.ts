@@ -9,14 +9,21 @@ function makeClient(): AMBRelayClient {
   return new AMBRelayClient([DEFAULT], { extraRelays: [EXTRA] });
 }
 
-/** Swap the pool's querySync for a recorder so no IO happens. */
+/** Swap the pool's subscribeManyEose (the queryRelays path) for a recorder so no IO happens. */
 function stubQuerySync(client: AMBRelayClient): () => string[][] {
   const calls: string[][] = [];
   (client as unknown as {
-    pool: { querySync: (relays: string[], filter: Filter) => Promise<NostrEvent[]> };
-  }).pool.querySync = async (relays) => {
+    pool: {
+      subscribeManyEose: (
+        relays: string[],
+        filter: Filter,
+        params: { onevent: (e: NostrEvent) => void; onclose: () => void }
+      ) => { close(reason?: string): void };
+    };
+  }).pool.subscribeManyEose = (relays, _filter, params) => {
     calls.push(relays);
-    return [];
+    queueMicrotask(() => params.onclose());
+    return { close: () => {} };
   };
   return () => calls;
 }
