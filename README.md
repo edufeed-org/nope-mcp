@@ -283,9 +283,18 @@ Parameters:
 | `authors` | string[] | Author pubkeys (hex) |
 | `limit` | number | Max results, 1-250 (default 20) |
 | `community` | string | Return content shared into this community (hex pubkey or npub) |
+| `licenseFilter` | `"open"` \| `"cc-any"` \| `"any"` | Restrict educational-resource (30142) results by license: `open` (CC0, Public Domain, CC BY, CC BY-SA), `cc-any` (all Creative Commons + Public Domain), `any` (every resource, including unlicensed/all-rights-reserved). Default: the server's ceiling (normally `any`). Other content types are never license-filtered. |
 | `relays` | string[] | Restrict to specific relays — by full URL or short name (`oersi`, `sodix`). See [`list_relays`](#list_relays). |
 
 Each result: `{ type, kind, title, url?, naddr?, snippet?, score?, ...type-specific }`.
+Resource results (kind 30142) also carry `license` (`{id, label}`, or `null` when
+unlicensed/unrecognized) and `accessLevel` (`"full"` for Creative Commons/Public
+Domain licenses, `"metadata-only"` otherwise). Snippets and passages exist only
+for `accessLevel:"full"` resources — present a `"metadata-only"` resource by its
+title, description, license and link, never quoted beyond its metadata. The
+top-level response also carries `licenseFilter` (the filter actually applied,
+after narrowing to the server's ceiling) and `licenseFilterClamped: true` when
+a wider request was narrowed.
 For upcoming events on the same topic, follow up with `search_calendar_events`.
 
 If a selected relay times out or is unreachable, the response adds
@@ -316,14 +325,16 @@ resolved to the caller (pass `me` when the transport is anonymous).
 requests vector weight `alpha: 0.7` (the indexer's own default is the
 keyword-leaning 0.3, kept for the relay's rerank path), so the semantic rank
 leads and boilerplate keyword matches ("GRUNDSCHULE", "Kinder") stop winning.
-It over-fetches `min(limit × 3, 100)` chunks, then keeps at most **two
-passages per document** (`event_coord`), drops hits below **10 % of the top
-score**, and returns the first `limit`. Phrase `question` as a topical
-statement naming subject and target group
+It over-fetches `min(limit × 3 × 2, 100)` chunks (a base 3× factor, doubled
+again because the license partition below removes hits before selection),
+then keeps at most **two passages per document** (`event_coord`), drops hits
+below **10 % of the top score**, and returns the first `limit`. Phrase
+`question` as a topical statement naming subject and target group
 ("Friedenserziehung in der Grundschule: Einstieg in das Thema Frieden mit
-Kindern") rather than the user's literal sentence ("Wie kann ich …?"). A
-passage with only a snippet and no text is either license-gated or has no
-fulltext indexed yet.
+Kindern") rather than the user's literal sentence ("Wie kann ich …?"). Matching
+learning resources whose license doesn't permit quoting never become a
+passage — they are moved to `metadataOnlyMatches` instead — so a passage with
+only a snippet and no text simply has no fulltext indexed yet.
 
 Parameters:
 | Name | Type | Description |
@@ -337,7 +348,17 @@ Parameters:
 | `since` / `until` | string | Inline scope: absolute Unix seconds or relative (`7d`, `1mo`, `now`) |
 | `me` | string | Who `$me` refers to (npub/hex); defaults to the calling identity |
 | `relays` | string[] | Relay selection (full URL or short name); first mapped relay is used |
-| `limit` | number | Passages to return, 1-25 (default 10) |
+| `limit` | number | Passages to return, 1-25 (default 10); also caps `metadataOnlyMatches` |
+| `licenseFilter` | `"open"` \| `"cc-any"` \| `"any"` | Restrict learning-resource (30142) hits by license: `open` (CC0, Public Domain, CC BY, CC BY-SA), `cc-any` (all Creative Commons + Public Domain), `any` (every resource, including unlicensed/all-rights-reserved). Default: the server's ceiling (normally `any`). Other content types are never license-filtered. |
+
+Response: `passages` are released, quotable fulltext hits (resource hits add
+`accessLevel: "full"`, `license` and `creator`/`publisher`).
+`metadataOnlyMatches` lists, separately, up to `limit` matching learning
+resources whose license does not permit quoting — `{ naddr, title?, license,
+accessLevel: "metadata-only", creator?, publisher?, sourcePage? }` — with no
+text, snippet, heading, section or score; point to them by title, license and
+link only. The top level also carries `licenseFilter` (the filter actually
+applied) and `licenseFilterClamped: true` when a wider request was narrowed.
 
 Failure is explicit, never a silent unscoped search: `empty_scope` (the relay
 answered but nothing matched), `relay_unreachable` (the content relay did not
@@ -368,6 +389,7 @@ Parameters:
 | `authors` | string[] | Filter by author pubkeys (hex) — e.g. from `resolve_author` or `list_known_authors` |
 | `since` / `until` | number | Unix timestamp bounds on resource creation time |
 | `limit` | number | Max results, 1-250 (default: 20) |
+| `licenseFilter` | `"open"` \| `"cc-any"` \| `"any"` | Restrict by license tier: `open` (CC0, Public Domain, CC BY, CC BY-SA), `cc-any` (all Creative Commons + Public Domain), `any` (every resource, including unlicensed/all-rights-reserved). Default: the server's ceiling (normally `any`); a wider request is narrowed and reported via `licenseFilterClamped`. |
 | `relays` | string[] | Restrict to specific relays — by full URL or short name (`oersi`, `sodix`) |
 
 The `subjectLabel` / `resourceTypeLabel` / `educationalLevelLabel` filters are
@@ -400,6 +422,18 @@ Each returned resource includes the standard AMB fields plus:
 
 - `nostr.naddr` — NIP-19 addressable identifier (`kind=30142`, pubkey, d-tag). Useful for any Nostr client.
 - `url` — direct link to the edufeed-app page for this resource. **Only present when `EDUFEED_APP_BASE_URL` is configured.** LLM clients should cite this as a markdown link (`[name](url)`) when recommending the resource so users can open it.
+- `license` — `{ id, label }` classified from the resource's `license:id` tag, or `null` when unlicensed/unrecognized.
+- `accessLevel` — `"full"` (Creative Commons or Public Domain license) or `"metadata-only"` (any other or no license); only `"full"` resources have indexed fulltext, snippets and passages.
+
+Both fields are always present, whatever `licenseFilter` was applied —
+`search_resources` returns every tier by default. Its top-level response
+additionally carries `licenseFilter` (the filter actually applied, after
+narrowing to the server's `LICENSE_FILTER_MAX` ceiling) and
+`licenseFilterClamped: true` when a wider request was narrowed.
+`get_resource` is never license-filtered; it mirrors `resource.accessLevel`
+at the top level as `accessLevel`, and also returns the deprecated
+`openLicense` boolean (`true` only for the `open` tier — CC0, Public Domain,
+CC BY, CC BY-SA — kept for compatibility; prefer `accessLevel`).
 
 `search_content`, `search_resources`, and `search_calendar_events` add
 `relaysIncomplete` + a `warning` when a selected relay timed out or was
