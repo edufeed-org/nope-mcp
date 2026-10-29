@@ -12,6 +12,7 @@ import { READ_ONLY } from './annotations.js';
 import {
   clampLicenseFilter, eventLicense, matchesLicenseFilter, type LicenseFilter,
 } from '../license/classify.js';
+import { licenseOnlyZeroHint } from './licenseHint.js';
 
 /**
  * License-filtered over-fetch: the license filter runs client-side (a relay
@@ -42,6 +43,8 @@ export async function runContentSearch(
   warning?: string;
   licenseFilter: LicenseFilter;
   licenseFilterClamped?: true;
+  /** Recovery guidance for the zero-match case caused only by the license filter. */
+  hint?: string;
 }> {
   const language = params.language ?? 'de';
   const filter = buildContentFilter(params);
@@ -84,12 +87,32 @@ export async function runContentSearch(
     }
   }
 
+  // Zero results caused ONLY by the license filter: the over-fetch already
+  // pulled in the wider set (no relay-side license field filter is ever
+  // added here), so the resource-kind events the filter dropped are already
+  // in hand — no extra query needed, unlike search_resources' field-filter
+  // path.
+  let hint: string | undefined;
+  if (results.length === 0 && filterResources) {
+    const droppedResources = events.filter(
+      (e) => e.kind === 30142 && !matchesLicenseFilter(eventLicense(e).group, effective)
+    );
+    if (droppedResources.length > 0) {
+      hint = licenseOnlyZeroHint(
+        droppedResources,
+        effective as Exclude<LicenseFilter, 'any'>,
+        opts.licenseFilterMax ?? 'any'
+      );
+    }
+  }
+
   return {
     total: results.length,
     results,
     ...relayDiagnosticsFields(diag),
     licenseFilter: effective,
     ...(clamped ? { licenseFilterClamped: true as const } : {}),
+    ...(hint ? { hint } : {}),
   };
 }
 

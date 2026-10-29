@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { NostrEvent } from 'nostr-tools';
 import type { AMBRelayClient } from '../relay/client.js';
 import {
   relaysNotSearched, resolveRelaysOrError, newRelayDiagnostics, relayDiagnosticsFields,
@@ -11,6 +12,7 @@ import { READ_ONLY } from './annotations.js';
 import {
   clampLicenseFilter, eventLicense, matchesLicenseFilter, type LicenseFilter,
 } from '../license/classify.js';
+import { LICENSE_FILTER_SCOPE, licenseOnlyZeroHint } from './licenseHint.js';
 
 export interface ResourceSearchResult {
   total: number;
@@ -29,11 +31,8 @@ export interface ResourceSearchResult {
   licenseFilterClamped?: true;
 }
 
-/** Which licenses a non-`any` filter admits, for the zero-match hint. */
-const LICENSE_FILTER_SCOPE: Record<Exclude<LicenseFilter, 'any'>, string> = {
-  open: 'CC0, Public Domain, CC BY, CC BY-SA',
-  'cc-any': 'Creative Commons or Public Domain',
-};
+/** Events sampled by the cheap zero-match license probe (see below). */
+const LICENSE_ZERO_HINT_PROBE_LIMIT = 50;
 
 /**
  * Execute a resource search. When a publisherName/creatorName filter matches
@@ -48,7 +47,8 @@ export async function runResourceSearch(
   relays?: string[],
   opts: { licenseFilterMax?: LicenseFilter } = {}
 ): Promise<ResourceSearchResult> {
-  const { effective, clamped } = clampLicenseFilter(params.licenseFilter, opts.licenseFilterMax ?? 'any');
+  const licenseFilterMax = opts.licenseFilterMax ?? 'any';
+  const { effective, clamped } = clampLicenseFilter(params.licenseFilter, licenseFilterMax);
   const { filter, search, limit } = buildFilter({ ...params, licenseFilter: effective });
 
   const diag = newRelayDiagnostics();
@@ -76,26 +76,52 @@ export async function runResourceSearch(
     ...(clamped ? { licenseFilterClamped: true as const } : {}),
   };
 
-  const actorName = params.publisherName ?? params.creatorName;
-  if (simplified.length === 0 && actorName) {
-    const candidates = await findActorCandidates(client, actorName, relays);
-    if (candidates.length > 0) {
-      result.actorCandidates = candidates;
-      result.hint =
-        `publisherName/creatorName filters are exact full-string matches; nothing matched ` +
-        `"${actorName}". Similar actor names in the corpus: ` +
-        candidates.map((c) => `${c.name} (${c.field}, ${c.count} sampled resources)`).join(', ') +
-        `. Retry with the exact spelling.`;
-    } else {
-      result.hint =
-        `publisherName/creatorName filters are exact full-string matches and nothing matched ` +
-        `"${actorName}"; no similar actor name was found either. The actor may not exist in ` +
-        `this corpus — try resolve_publisher, resolve_author, or a free-text query search.`;
-    }
+  if (simplified.length === 0) {
+    // Was the empty result caused ONLY by the license filter (otherwise-
+    // matching resources existed but were excluded), or did nothing match at
+    // all? A pure field-filter/browse search already carried license.id
+    // tokens in the relay query itself (buildFilter), so `fetched` never saw
+    // the wider set — a cheap extra probe without them is the only way to
+    // tell. A free-text search is over-fetched WITHOUT a relay license
+    // filter (field filters disable the relay's chunk rerank), so `fetched`
+    // already *is* that wider set; no extra query needed.
+    let licenseExcluded: NostrEvent[] = [];
     if (effective !== 'any') {
-      result.hint +=
-        ` Only resources under ${LICENSE_FILTER_SCOPE[effective]} licenses were searched ` +
-        `(licenseFilter: ${effective}); resources under other licenses or without a license are left out.`;
+      if (search.includes('license.id:')) {
+        const probe = buildFilter({ ...params, licenseFilter: 'any', limit: LICENSE_ZERO_HINT_PROBE_LIMIT });
+        licenseExcluded = probe.search
+          ? await client.search(probe.search, probe.filter, relays)
+          : await client.query(probe.filter, relays);
+      } else {
+        licenseExcluded = fetched;
+      }
+    }
+
+    if (licenseExcluded.length > 0) {
+      result.hint = licenseOnlyZeroHint(licenseExcluded, effective as Exclude<LicenseFilter, 'any'>, licenseFilterMax);
+    } else {
+      const actorName = params.publisherName ?? params.creatorName;
+      if (actorName) {
+        const candidates = await findActorCandidates(client, actorName, relays);
+        if (candidates.length > 0) {
+          result.actorCandidates = candidates;
+          result.hint =
+            `publisherName/creatorName filters are exact full-string matches; nothing matched ` +
+            `"${actorName}". Similar actor names in the corpus: ` +
+            candidates.map((c) => `${c.name} (${c.field}, ${c.count} sampled resources)`).join(', ') +
+            `. Retry with the exact spelling.`;
+        } else {
+          result.hint =
+            `publisherName/creatorName filters are exact full-string matches and nothing matched ` +
+            `"${actorName}"; no similar actor name was found either. The actor may not exist in ` +
+            `this corpus — try resolve_publisher, resolve_author, or a free-text query search.`;
+        }
+        if (effective !== 'any') {
+          result.hint +=
+            ` Only resources under ${LICENSE_FILTER_SCOPE[effective]} licenses were searched ` +
+            `(licenseFilter: ${effective}); resources under other licenses or without a license are left out.`;
+        }
+      }
     }
   }
 

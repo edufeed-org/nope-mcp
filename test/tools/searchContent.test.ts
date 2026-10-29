@@ -221,3 +221,48 @@ describe('runContentSearch license tiers on search_content results (B3)', () => 
     expect(out.licenseFilter).toBe('open');
   });
 });
+
+describe('runContentSearch license-only zero-match hint (Gendering MINT bug, analog)', () => {
+  const NCSA = 'https://creativecommons.org/licenses/by-nc-sa/4.0/';
+  const gendering = () =>
+    Array.from({ length: 10 }, (_, i) =>
+      evt(30142, `g${i}`, [['d', `g${i}`], ['name', `Resource ${i}`], ['license:id', NCSA]])
+    );
+
+  it('says N resources match under other licenses and suggests widening', async () => {
+    const client = fakeClient(gendering());
+    const out = await runContentSearch(client, { query: 'gendering', types: ['resource'], licenseFilter: 'open' });
+
+    expect(out.total).toBe(0);
+    expect(out.hint).toBeDefined();
+    expect(out.hint).toContain('10');
+    expect(out.hint).toContain('CC BY-NC-SA 4.0');
+    expect(out.hint).toContain('licenseFilter: "any"');
+  });
+
+  it('says the matches are under licenses this server does not return when the ceiling forbids widening', async () => {
+    const client = fakeClient(gendering());
+    const out = await runContentSearch(
+      client,
+      { query: 'gendering', types: ['resource'], licenseFilter: 'open' },
+      { licenseFilterMax: 'open' }
+    );
+
+    expect(out.total).toBe(0);
+    expect(out.hint).toContain('10');
+    expect(out.hint).toContain("doesn't return");
+    expect(out.hint).not.toContain('retry with licenseFilter');
+  });
+
+  it('adds no hint when results are genuinely empty', async () => {
+    const out = await runContentSearch(fakeClient([]), { query: 'x', types: ['resource'], licenseFilter: 'open' });
+    expect(out.total).toBe(0);
+    expect(out.hint).toBeUndefined();
+  });
+
+  it('adds no hint when licenseFilter is any', async () => {
+    const out = await runContentSearch(fakeClient([]), { query: 'x', licenseFilter: 'any' });
+    expect(out.total).toBe(0);
+    expect(out.hint).toBeUndefined();
+  });
+});

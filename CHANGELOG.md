@@ -6,6 +6,19 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ## [Unreleased]
 
+### Fixed
+
+- `search_resources`/`search_content`: a zero-result response caused only by
+  `licenseFilter` (e.g. a `creatorName`/`publisherName` filter matching
+  resources that are all under a license outside the filter's scope) no
+  longer shows the "exact spelling" actor hint — it now reports how many
+  resources matched under other licenses and, when the operator ceiling
+  (`LICENSE_FILTER_MAX`) allows it, suggests retrying with a wider
+  `licenseFilter`; when the ceiling forbids widening, it says the matches
+  are under licenses this server doesn't return instead. The actor-spelling
+  hint is now shown only when the actor name truly matched nothing,
+  regardless of the license filter.
+
 ## [0.7.0] - 2026-10-29
 
 ### Added

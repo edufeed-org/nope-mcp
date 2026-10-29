@@ -111,18 +111,24 @@ describe('runResourceSearch with licenseFilter open', () => {
     expect(out.total).toBe(1);
   });
 
-  it('says in the zero-match hint which licenses were searched', async () => {
-    const client = fakeClient([], [resourceEvent('r1', 'LEHRE LADEN', NC)]);
+  it('says in the zero-match hint which licenses were searched (genuinely zero, actor unknown)', async () => {
+    // First call (field filter + license tokens): nothing. Second call (the
+    // license-only-zero probe, licenseFilter widened to any): also nothing —
+    // so this is a genuine zero-match, not a license-caused one, and the
+    // existing actor fallback runs (no 3rd call programmed: findActorCandidates
+    // gets the same `fallback` as the probe, i.e. also empty).
+    const client = fakeClient([]);
     const out = await runResourceSearch(client, { publisherName: 'Lehreladen', licenseFilter: 'open' });
     expect(out.total).toBe(0);
+    expect(out.actorCandidates).toBeUndefined();
     expect(out.hint).toContain(
       " Only resources under CC0, Public Domain, CC BY, CC BY-SA licenses were searched (licenseFilter: open); " +
         'resources under other licenses or without a license are left out.'
     );
   });
 
-  it('names Creative Commons in the zero-match hint under cc-any', async () => {
-    const client = fakeClient([], [resourceEvent('r1', 'LEHRE LADEN', NC)]);
+  it('names Creative Commons in the zero-match hint under cc-any (genuinely zero)', async () => {
+    const client = fakeClient([]);
     const out = await runResourceSearch(client, { publisherName: 'Lehreladen', licenseFilter: 'cc-any' });
     expect(out.hint).toContain(
       ' Only resources under Creative Commons or Public Domain licenses were searched (licenseFilter: cc-any);'
@@ -221,6 +227,63 @@ describe('runResourceSearch license tiers', () => {
     expect(client.searches[0]).not.toContain('license.id:');
     expect(out.total).toBe(10);
     expect(out.resources.every((r) => r.accessLevel === 'full')).toBe(true);
+  });
+});
+
+describe('runResourceSearch license-only zero-match hint (Gendering MINT bug)', () => {
+  const NCSA = 'https://creativecommons.org/licenses/by-nc-sa/4.0/';
+  const creator = 'Projekt Gendering MINT didaktisch-digital';
+  const gendering = () =>
+    Array.from({ length: 10 }, (_, i) => {
+      const e = resourceEvent(`g${i}`, undefined, NCSA);
+      e.tags.push(['creator:name', creator], ['creator:type', 'Organization']);
+      return e;
+    });
+
+  it('says N resources match under other licenses and suggests widening, with no spelling hint', async () => {
+    // 1st call: the relay query itself carries license.id:open tokens plus
+    // creator.name — nothing matches server-side (all 10 are BY-NC-SA).
+    // 2nd call: the zero-hint probe (same filters, no license tokens) finds
+    // all 10 — proving the creator name was exact and only the license
+    // filter excluded them.
+    const client = fakeClient([], gendering());
+    const out = await runResourceSearch(client, { creatorName: creator, licenseFilter: 'open' });
+
+    expect(out.total).toBe(0);
+    expect(out.actorCandidates).toBeUndefined();
+    expect(out.hint).toBeDefined();
+    expect(out.hint).toContain('10');
+    expect(out.hint).toContain('CC BY-NC-SA 4.0');
+    expect(out.hint).toContain('licenseFilter: "any"');
+    expect(out.hint).not.toContain('exact full-string');
+    expect(out.hint).not.toContain('spelling');
+  });
+
+  it('says the matches are under licenses this server does not return when the ceiling forbids widening', async () => {
+    const client = fakeClient([], gendering());
+    const out = await runResourceSearch(
+      client,
+      { creatorName: creator, licenseFilter: 'open' },
+      undefined,
+      { licenseFilterMax: 'open' }
+    );
+
+    expect(out.total).toBe(0);
+    expect(out.hint).toContain('10');
+    expect(out.hint).toContain("doesn't return");
+    expect(out.hint).not.toContain('retry with licenseFilter');
+  });
+
+  it('still shows the spelling hint when the actor name truly matches nothing, regardless of license', async () => {
+    // Both the primary search and the license-widened probe come back
+    // empty, so this is a genuine zero-match and the actor-candidate flow
+    // (3rd call) should run as before.
+    const client = fakeClient([], []);
+    const out = await runResourceSearch(client, { creatorName: 'Does Not Exist', licenseFilter: 'open' });
+
+    expect(out.total).toBe(0);
+    expect(out.hint).toContain('exact full-string');
+    expect(out.hint).toContain('Only resources under');
   });
 });
 
