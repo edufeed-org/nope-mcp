@@ -100,6 +100,28 @@ describe('eventToAMBResource', () => {
     expect(result!.resource.datePublished).toBe('2024-01-15');
   });
 
+  it('falls back to the plain license tag (amb-indexer parity: worker.go readLicenseTag)', () => {
+    const event = createMockEvent(
+      [['name', 'Test Resource'], ['license', 'https://creativecommons.org/licenses/by/4.0/']],
+      'resource-1'
+    );
+    const result = eventToAMBResource(event);
+    expect(result!.resource.license?.id).toBe('https://creativecommons.org/licenses/by/4.0/');
+  });
+
+  it('prefers license:id over license when both are present', () => {
+    const event = createMockEvent(
+      [
+        ['name', 'Test Resource'],
+        ['license', 'https://creativecommons.org/licenses/by-nc/4.0/'],
+        ['license:id', 'https://creativecommons.org/licenses/by/4.0/'],
+      ],
+      'resource-1'
+    );
+    const result = eventToAMBResource(event);
+    expect(result!.resource.license?.id).toBe('https://creativecommons.org/licenses/by/4.0/');
+  });
+
   it('extracts mainEntityOfPage from http r tags', () => {
     const event = createMockEvent(
       [
@@ -178,6 +200,19 @@ describe('toSimplifiedResource', () => {
     expect(simplified.isAccessibleForFree).toBe(true);
     expect(simplified.datePublished).toBe('2024-01-15');
     expect(simplified.nostr.eventId).toBe('event123');
+  });
+
+  it('classifies a plain-license-tag resource as fully-licensed CC BY (amb-indexer parity)', () => {
+    const event = createMockEvent(
+      [['name', 'Ein Erfahrungsbericht'], ['license', 'https://creativecommons.org/licenses/by/4.0/']],
+      'resource-1'
+    );
+    const simplified = toSimplifiedResource(eventToAMBResource(event)!);
+    expect(simplified.license).toEqual({
+      id: 'https://creativecommons.org/licenses/by/4.0/',
+      label: 'CC BY 4.0',
+    });
+    expect(simplified.accessLevel).toBe('full');
   });
 
   it('exposes sourcePage from the r tag', () => {

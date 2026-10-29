@@ -167,6 +167,16 @@ describe('runResourceSearch license tiers', () => {
     expect(byId.get('d-none')!.accessLevel).toBe('metadata-only');
   });
 
+  it('classifies a plain-license-tag resource as full CC BY (amb-indexer parity)', async () => {
+    const event = resourceEvent('plain-license');
+    event.tags.push(['license', BY]); // plain `license` tag, no `license:id`
+    const out = await runResourceSearch(fakeClient([event]), { query: 'mathe', licenseFilter: 'any' });
+    expect(out.resources[0]).toMatchObject({
+      license: { id: BY, label: 'CC BY 4.0' },
+      accessLevel: 'full',
+    });
+  });
+
   it('open returns only the open-tier resource', async () => {
     const out = await runResourceSearch(fakeClient(events()), { query: 'mathe', licenseFilter: 'open' });
     expect(out.resources.map((r) => r.id)).toEqual(['d-by']);

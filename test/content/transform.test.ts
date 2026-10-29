@@ -337,6 +337,29 @@ describe('publicationToContentResult (NKBIP-01 30040/30041)', () => {
     expect(r.naddr).toBeTruthy();
   });
 
+  it('falls back to the plain license tag (amb-indexer parity: worker.go readLicenseTag)', () => {
+    const e = evt(30040, [
+      ['d', 'tk-p101658-pub100021'],
+      ['title', 'Paper'],
+      ['license', 'https://creativecommons.org/licenses/by/4.0/'],
+    ]);
+    const r = transformContentEvent(e)!;
+    if (r.type !== 'publication') throw new Error('wrong type');
+    expect(r.license).toBe('https://creativecommons.org/licenses/by/4.0/');
+  });
+
+  it('prefers license:id over license when both are present', () => {
+    const e = evt(30040, [
+      ['d', 'tk-p101658-pub100021'],
+      ['title', 'Paper'],
+      ['license', 'https://creativecommons.org/licenses/by-nc/4.0/'],
+      ['license:id', 'https://creativecommons.org/licenses/by/4.0/'],
+    ]);
+    const r = transformContentEvent(e)!;
+    if (r.type !== 'publication') throw new Error('wrong type');
+    expect(r.license).toBe('https://creativecommons.org/licenses/by/4.0/');
+  });
+
   it('projects a wild Alexandria-shape 30040 (bare + event-id-hinted sections)', () => {
     const e = evt(30040, [
       ['d', 'aesops-fables'],

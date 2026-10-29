@@ -132,6 +132,16 @@ describe('runGetResource openLicense flag', () => {
     expect(out.resource).toBeTruthy();
   });
 
+  it('marks a resource licensed only via the plain license tag as open (amb-indexer parity)', async () => {
+    const event = {
+      id: 'e'.repeat(64), pubkey: author, created_at: 1, kind: 30142, sig: 's', content: '',
+      tags: [['d', 'r1'], ['name', 'Arbeitsblatt'], ['license', 'https://creativecommons.org/licenses/by/4.0/']],
+    };
+    const out = await runGetResource(fakeGetClient(event), { identifier: 'r1' });
+    expect(out.openLicense).toBe(true);
+    expect(out.accessLevel).toBe('full');
+  });
+
   it('still returns a non-open or unlicensed resource, flagged false', async () => {
     const nc = await runGetResource(fakeGetClient(resource('https://creativecommons.org/licenses/by-nc/4.0/')), { eventId: 'x' });
     expect(nc.resource).toBeTruthy();

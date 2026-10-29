@@ -1,4 +1,5 @@
 import type { NostrEvent } from 'nostr-tools';
+import { licenseTagValue } from './tag.js';
 
 /**
  * Open-license policy for search results (laoc, 2026-10-02): learning
@@ -35,9 +36,13 @@ export function isOpenLicense(uri: string | undefined): boolean {
   return OPEN_PATTERNS.some((re) => re.test(norm));
 }
 
-/** A kind-30142 event's `license:id` tag classified by isOpenLicense; missing = not open. */
+/**
+ * A kind-30142 event's license classified by isOpenLicense; missing = not
+ * open. Reads `license:id`, falling back to the plain `license` tag
+ * (licenseTagValue, amb-indexer parity).
+ */
 export function eventHasOpenLicense(event: NostrEvent): boolean {
-  return isOpenLicense(event.tags.find((t) => t[0] === 'license:id')?.[1]);
+  return isOpenLicense(licenseTagValue(event));
 }
 
 /**

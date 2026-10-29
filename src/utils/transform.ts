@@ -3,6 +3,7 @@ import type { AmbLearningResourceBase, LocalizedString } from 'amb-nostr-convert
 import type { AMBResourceWithMetadata } from '../types/amb.js';
 import { getLabel } from '../skos/parser.js';
 import { classifyLicense, accessLevelFor, type AccessLevel, type LicenseInfo } from '../license/classify.js';
+import { licenseTagValue } from '../license/tag.js';
 
 /**
  * Base URL of the edufeed-app frontend. When set, `toSimplifiedResource`
@@ -152,9 +153,10 @@ export function eventToAMBResource(event: NostrEvent): AMBResourceWithMetadata |
       creator: extractEntities(event, 'creator') as AmbLearningResourceBase['creator'],
       publisher: extractEntities(event, 'publisher') as AmbLearningResourceBase['publisher'],
 
-      // License
-      license: getTag(event, 'license:id') ? {
-        id: getTag(event, 'license:id')!,
+      // License — license:id, falling back to the plain license tag
+      // (licenseTagValue, amb-indexer parity: worker.go readLicenseTag).
+      license: licenseTagValue(event) ? {
+        id: licenseTagValue(event)!,
         name: getTag(event, 'license:name'),
       } : undefined,
       isAccessibleForFree: getTag(event, 'isAccessibleForFree') === 'true',

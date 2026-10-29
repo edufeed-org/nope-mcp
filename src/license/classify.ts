@@ -1,5 +1,6 @@
 import type { NostrEvent } from 'nostr-tools';
 import { normalizeLicenseUri, OPEN_LICENSE_URIS } from './open.js';
+import { licenseTagValue } from './tag.js';
 
 /**
  * License-tier classification for kind-30142 learning resources (laoc,
@@ -151,11 +152,15 @@ export function clampLicenseFilter(
   return { effective: requested, clamped: false };
 }
 
-/** A kind-30142 event's `license:id` tag, classified with its access level. */
+/**
+ * A kind-30142 event's license, classified with its access level. Reads
+ * `license:id`, falling back to the plain `license` tag (licenseTagValue,
+ * amb-indexer parity).
+ */
 export function eventLicense(
   event: NostrEvent
 ): { group: LicenseGroup; license: LicenseInfo | null; accessLevel: AccessLevel } {
-  const { group, license } = classifyLicense(event.tags.find((t) => t[0] === 'license:id')?.[1]);
+  const { group, license } = classifyLicense(licenseTagValue(event));
   return { group, license, accessLevel: accessLevelFor(group) };
 }
 

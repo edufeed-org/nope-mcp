@@ -110,4 +110,16 @@ describe('eventHasOpenLicense', () => {
   it('treats a missing license as not open', () => {
     expect(eventHasOpenLicense(ev([['d', 'x']]))).toBe(false);
   });
+
+  it('falls back to the plain license tag (amb-indexer parity: worker.go readLicenseTag)', () => {
+    expect(eventHasOpenLicense(ev([['license', 'https://creativecommons.org/licenses/by/4.0/']]))).toBe(true);
+    expect(eventHasOpenLicense(ev([['license', 'https://creativecommons.org/licenses/by-nc/4.0/']]))).toBe(false);
+  });
+
+  it('prefers license:id over license when both are present', () => {
+    expect(eventHasOpenLicense(ev([
+      ['license', 'https://creativecommons.org/licenses/by-nc/4.0/'],
+      ['license:id', 'https://creativecommons.org/licenses/by/4.0/'],
+    ]))).toBe(true);
+  });
 });

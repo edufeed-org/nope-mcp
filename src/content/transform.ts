@@ -13,6 +13,7 @@ import type {
   MeasureResult,
   PublicationResult,
 } from './types.js';
+import { licenseTagValue } from '../license/tag.js';
 
 const EXCERPT_MAX = 300;
 
@@ -216,7 +217,9 @@ function publicationToContentResult(event: NostrEvent): PublicationResult | null
   if (keywords.length) result.keywords = keywords;
   const language = tag(event, 'inLanguage');
   if (language) result.language = language;
-  const license = tag(event, 'license:id');
+  // license:id, falling back to the plain license tag (licenseTagValue,
+  // amb-indexer parity: worker.go readLicenseTag).
+  const license = licenseTagValue(event);
   if (license) result.license = license;
 
   const partOf: string[] = [];

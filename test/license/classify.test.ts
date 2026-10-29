@@ -110,6 +110,25 @@ describe('eventLicense', () => {
       accessLevel: 'metadata-only',
     });
   });
+
+  it('falls back to the plain license tag (amb-indexer parity: worker.go readLicenseTag)', () => {
+    const uri = 'https://creativecommons.org/licenses/by/4.0/';
+    expect(eventLicense(ev([['license', uri]]))).toEqual({
+      group: 'open',
+      license: { id: uri, label: 'CC BY 4.0' },
+      accessLevel: 'full',
+    });
+  });
+
+  it('prefers license:id over license when both are present', () => {
+    const idUri = 'https://creativecommons.org/licenses/by/4.0/';
+    const plainUri = 'https://creativecommons.org/licenses/by-nc/4.0/';
+    expect(eventLicense(ev([['license', plainUri], ['license:id', idUri]]))).toEqual({
+      group: 'open',
+      license: { id: idUri, label: 'CC BY 4.0' },
+      accessLevel: 'full',
+    });
+  });
 });
 
 describe('parseLicenseFilterMax', () => {
