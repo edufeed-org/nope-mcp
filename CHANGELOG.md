@@ -6,6 +6,39 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-29
+
+### Added
+
+- **License tiers for learning resources.** Every learning resource (kind
+  30142) is now searchable, not only CC0/PD/BY/BY-SA. Each result carries
+  `license` (`{ id, label }`, e.g. "CC BY-NC-SA 4.0", or `null`) and
+  `accessLevel`: `"full"` for any Creative Commons license or Public Domain
+  (passages and snippets as before), `"metadata-only"` for all-rights-reserved,
+  unknown or missing licenses (metadata and link only, never fulltext).
+- `licenseFilter` parameter on `search_resources`, `search_content` and
+  `search_passages`: `open` (CC0/PD/BY/BY-SA), `cc-any` (all CC + PD) or
+  `any` (default). Responses report the applied `licenseFilter` and
+  `licenseFilterClamped: true` when narrowed.
+- `LICENSE_FILTER_MAX` env: operator ceiling for `licenseFilter` (default
+  `any`); wider requests are clamped.
+- `search_passages` returns `metadataOnlyMatches` for matching learning
+  resources whose license does not allow quoting (no text, with license and
+  attribution).
+- `get_resource` returns top-level `accessLevel`.
+
+### Changed
+
+- The license is read from `license:id`, falling back to a plain `license`
+  tag (parity with amb-indexer).
+- `search_content` strips snippet, page, heading, score and source URL from
+  metadata-only results even if the relay sent a snippet.
+
+### Deprecated
+
+- `OPEN_LICENSES_ONLY` (maps to `LICENSE_FILTER_MAX=open` when `true`, with a
+  log line) and `get_resource`'s `openLicense` (use `accessLevel`).
+
 ## [0.6.1] - 2026-10-28
 
 ### Fixed
