@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { runResourceSearch } from '../../src/tools/search.js';
+import { FOLLOWUP_PROBE_TIMEOUT_MS } from '../../src/relay/client.js';
 import type { NostrEvent } from 'nostr-tools';
 
 function resourceEvent(id: string, publisher?: string, license?: string): NostrEvent {
@@ -284,6 +285,33 @@ describe('runResourceSearch license-only zero-match hint (Gendering MINT bug)', 
     expect(out.total).toBe(0);
     expect(out.hint).toContain('exact full-string');
     expect(out.hint).toContain('Only resources under');
+  });
+
+  it('gives the license probe and the actor-candidate fallback a short budget, not the full query timeout', async () => {
+    // A zero-result response can chain up to 3 sequential relay calls: the
+    // main query, the license-widened probe, and (if that's also empty)
+    // findActorCandidates. Each one running the full per-query timeout
+    // would mean tens of seconds of added latency on an already-empty
+    // response, so follow-up probes get FOLLOWUP_PROBE_TIMEOUT_MS instead.
+    const calls: unknown[][] = [];
+    const client = {
+      search: async (...args: unknown[]) => {
+        calls.push(args);
+        return calls.length === 1 ? [] : []; // genuinely zero at every step
+      },
+      query: async (...args: unknown[]) => {
+        calls.push(args);
+        return [];
+      },
+    };
+    await runResourceSearch(client, { creatorName: 'Does Not Exist', licenseFilter: 'open' });
+
+    // call 1: the main field-filter + license query — default timeout (no override).
+    expect(calls[0][4]).toBeUndefined();
+    // call 2: the license-widened probe — short budget.
+    expect(calls[1][4]).toBe(FOLLOWUP_PROBE_TIMEOUT_MS);
+    // call 3: findActorCandidates' free-text search — short budget.
+    expect(calls[2][4]).toBe(FOLLOWUP_PROBE_TIMEOUT_MS);
   });
 });
 

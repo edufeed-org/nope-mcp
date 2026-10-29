@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { NostrEvent } from 'nostr-tools';
 import type { AMBRelayClient } from '../relay/client.js';
+import { FOLLOWUP_PROBE_TIMEOUT_MS } from '../relay/client.js';
 import {
   relaysNotSearched, resolveRelaysOrError, newRelayDiagnostics, relayDiagnosticsFields,
 } from './relaySelection.js';
@@ -89,9 +90,13 @@ export async function runResourceSearch(
     if (effective !== 'any') {
       if (search.includes('license.id:')) {
         const probe = buildFilter({ ...params, licenseFilter: 'any', limit: LICENSE_ZERO_HINT_PROBE_LIMIT });
-        licenseExcluded = probe.search
-          ? await client.search(probe.search, probe.filter, relays)
-          : await client.query(probe.filter, relays);
+        const probed = probe.search
+          ? await client.search(probe.search, probe.filter, relays, undefined, FOLLOWUP_PROBE_TIMEOUT_MS)
+          : await client.query(probe.filter, relays, undefined, FOLLOWUP_PROBE_TIMEOUT_MS);
+        // Defensive: the probe asked for every license, so filter down to
+        // the ones that actually fail `effective` (matches searchContent.ts'
+        // equivalent check) rather than assuming everything it found is excluded.
+        licenseExcluded = probed.filter((e) => !matchesLicenseFilter(eventLicense(e).group, effective));
       } else {
         licenseExcluded = fetched;
       }
@@ -102,7 +107,7 @@ export async function runResourceSearch(
     } else {
       const actorName = params.publisherName ?? params.creatorName;
       if (actorName) {
-        const candidates = await findActorCandidates(client, actorName, relays);
+        const candidates = await findActorCandidates(client, actorName, relays, FOLLOWUP_PROBE_TIMEOUT_MS);
         if (candidates.length > 0) {
           result.actorCandidates = candidates;
           result.hint =

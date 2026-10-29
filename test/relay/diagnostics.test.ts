@@ -50,6 +50,87 @@ describe('queryEvents diagnostics (prepareSubscription path)', () => {
   });
 });
 
+/**
+ * A fake relay sub whose close() mimics nostr-tools' real Subscription.close():
+ * it synchronously invokes the caller's onclose. Needed to exercise the
+ * oneose-calls-close-which-fires-onclose-too double-settlement bug (and its
+ * fix) that a close() stub ignoring `onclose` can't catch.
+ */
+function fakeRelayWithControllableSubs() {
+  const control: Record<
+    string,
+    { oneose: () => void; onclose: (reason?: string) => void; fireEose: () => void }
+  > = {};
+  const pool = {
+    ensureRelay: async (url: string) => ({
+      prepareSubscription: (
+        _filters: Filter[],
+        params: { oneose: () => void; onclose: (reason?: string) => void; onevent: (e: NostrEvent) => void }
+      ) => {
+        let closed = false;
+        const sub = {
+          fire() {},
+          close(reason?: string) {
+            if (closed) return;
+            closed = true;
+            params.onclose(reason);
+          },
+          filters: [] as Filter[],
+        };
+        control[url] = { oneose: params.oneose, onclose: params.onclose, fireEose: () => sub.close('eose') };
+        return sub;
+      },
+    }),
+    close() {},
+  };
+  return { pool, control };
+}
+
+describe('queryEvents bookkeeping across multiple relays', () => {
+  const R1 = 'wss://r1.example';
+  const R2 = 'wss://r2.example';
+
+  it('waits for every relay to settle before resolving (oneose must not double-decrement pendingRelays)', async () => {
+    const client = new AMBRelayClient([R1, R2], { queryTimeoutMs: 5000 });
+    const { pool, control } = fakeRelayWithControllableSubs();
+    (client as unknown as { pool: unknown }).pool = pool;
+
+    const promise = client.queryEvents({ kinds: [30142], limit: 1 }, [R1, R2]);
+    await new Promise((r) => setTimeout(r, 10)); // let both ensureRelay/prepareSubscription calls land
+
+    let resolved = false;
+    promise.then(() => {
+      resolved = true;
+    });
+
+    // Relay 1's real EOSE arrives — its oneose handler calls sub.close('eose'),
+    // which (in the buggy version) fired onclose too, decrementing
+    // pendingRelays a second time and resolving the whole query early.
+    control[R1].oneose();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(resolved).toBe(false); // relay 2 hasn't EOSE'd yet — must still be waiting
+
+    control[R2].oneose();
+    await promise;
+    expect(resolved).toBe(true);
+  });
+
+  it('reports only the relay still hanging at the deadline as timedOut, not one that EOSE\'d first', async () => {
+    const client = new AMBRelayClient([R1, R2], { queryTimeoutMs: 60 });
+    const { pool, control } = fakeRelayWithControllableSubs();
+    (client as unknown as { pool: unknown }).pool = pool;
+
+    const diag = newRelayDiagnostics();
+    const promise = client.queryEvents({ kinds: [30142], limit: 1 }, [R1, R2], { diag });
+    await new Promise((r) => setTimeout(r, 10));
+    control[R1].oneose(); // R1 settles normally well before the 60ms deadline; R2 never does
+
+    await promise;
+    expect(diag.timedOut).toEqual([R2]); // not [] (which the pre-fix snapshot-after-close bug produced)
+    expect(diag.unreachable).toEqual([]);
+  });
+});
+
 type FakeSubscribeManyEose = (
   relays: string[],
   filter: Filter,

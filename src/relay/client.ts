@@ -29,6 +29,17 @@ export interface RelayStatus {
 const DEFAULT_TIMEOUT = 25000;
 
 /**
+ * Short budget for follow-up probes issued only on an already-empty result
+ * (search_resources' license-only zero-match hint, resolve_publisher's
+ * did-you-mean fallback). These run sequentially after the main query, so
+ * giving each the full per-query timeout could chain into tens of seconds
+ * of added latency on what is already a zero-result response; 5s is enough
+ * for a cheap, small-limit probe without materially slowing down the
+ * common case where it finds nothing either.
+ */
+export const FOLLOWUP_PROBE_TIMEOUT_MS = 5000;
+
+/**
  * Per-query relay timeout, read once per client construction (not cached at
  * module scope, so tests can flip the env var freely). `RELAY_QUERY_TIMEOUT_MS`
  * default 25000 — the amb-relay's own search budget is ~20s, and the previous
@@ -228,32 +239,39 @@ export class AMBRelayClient {
   // ============ Query methods ============
 
   /**
-   * Query with NIP-01 filters only
+   * Query with NIP-01 filters only. `timeoutMs` overrides the client's
+   * default per-query budget for this call only — used by short follow-up
+   * probes (e.g. search_resources' zero-match license hint,
+   * resolve_publisher's did-you-mean fallback) that shouldn't each wait the
+   * full budget on top of the main query that already ran.
    */
   async query(
     filter: Partial<Filter>,
     relays?: string[],
-    diag?: RelayQueryDiagnostics
+    diag?: RelayQueryDiagnostics,
+    timeoutMs?: number
   ): Promise<NostrEvent[]> {
     const fullFilter: Filter = { ...filter, kinds: [30142] };
-    return this.queryRelays(fullFilter, relays, diag);
+    return this.queryRelays(fullFilter, relays, diag, timeoutMs);
   }
 
   /**
-   * Query with NIP-50 search string and optional NIP-01 filters
+   * Query with NIP-50 search string and optional NIP-01 filters. `timeoutMs`
+   * — see `query()`.
    */
   async search(
     searchString: string,
     filter: Partial<Filter> = {},
     relays?: string[],
-    diag?: RelayQueryDiagnostics
+    diag?: RelayQueryDiagnostics,
+    timeoutMs?: number
   ): Promise<NostrEvent[]> {
     const fullFilter: Filter = {
       ...filter,
       kinds: [30142],
       search: searchString,
     };
-    return this.queryRelays(fullFilter, relays, diag);
+    return this.queryRelays(fullFilter, relays, diag, timeoutMs);
   }
 
   /**
@@ -355,6 +373,13 @@ export class AMBRelayClient {
     // — already populated by onevent as they arrive — survives the race
     // even when the timeout promise is the one that settles first.
     const subs: Array<{ close(reason?: string): void }> = [];
+    // Snapshot of which relays were still hanging the instant the deadline
+    // fired, taken BEFORE closing their subscriptions below — sub.close()
+    // runs its onclose synchronously, which (via settleRelay) would
+    // otherwise mark every relay "settled" and hide a genuine timeout from
+    // the diagnostics computed after this whole method returns.
+    let timedOutAt: string[] | null = null;
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
     const result = await Promise.race([
       new Promise<NostrEvent[]>(async (resolve, reject) => {
@@ -377,14 +402,34 @@ export class AMBRelayClient {
           return;
         }
 
+        // Settle a relay exactly once. oneose below calls sub.close('eose'),
+        // which synchronously fires onclose too — without this guard that
+        // double-counts the relay and decrements pendingRelays twice, so
+        // with 2+ relays the query could resolve after only the FIRST
+        // relay's EOSE instead of waiting for all of them.
+        const settleRelay = (url: string) => {
+          if (settled.has(url)) return;
+          settled.add(url);
+          pendingRelays--;
+          if (pendingRelays <= 0) {
+            resolve(events);
+          }
+        };
+
         for (const url of connectedRelays) {
           const relay = await this.pool.ensureRelay(url);
 
           // prepareSubscription creates the sub and registers it, but
           // doesn't send the REQ yet — that happens on fire().
           // We pass the full filter (with extended props) so fire()
-          // sends them in the REQ message.
+          // sends them in the REQ message. `eoseTimeout` must be set
+          // explicitly: nostr-tools' Subscription otherwise falls back to
+          // the relay's baseEoseTimeout (4400ms) and synthesizes a fake
+          // EOSE at that point regardless of our own, much longer, query
+          // timeout — silently truncating slow-but-answering relays well
+          // before this method's real deadline.
           const sub = relay.prepareSubscription([filter], {
+            eoseTimeout: this.queryTimeoutMs,
             onevent: (event: NostrEvent) => {
               if (!seen.has(event.id)) {
                 seen.add(event.id);
@@ -393,18 +438,10 @@ export class AMBRelayClient {
             },
             oneose: () => {
               sub.close('eose');
-              settled.add(url);
-              pendingRelays--;
-              if (pendingRelays <= 0) {
-                resolve(events);
-              }
+              settleRelay(url);
             },
             onclose: () => {
-              settled.add(url);
-              pendingRelays--;
-              if (pendingRelays <= 0) {
-                resolve(events);
-              }
+              settleRelay(url);
             },
           });
 
@@ -419,10 +456,13 @@ export class AMBRelayClient {
           subs.push(sub);
         }
       }),
-      new Promise<NostrEvent[]>((_, reject) =>
-        setTimeout(() => reject(new Error('Query timeout')), this.queryTimeoutMs)
-      ),
+      new Promise<NostrEvent[]>((_, reject) => {
+        timeoutHandle = setTimeout(() => reject(new Error('Query timeout')), this.queryTimeoutMs);
+      }),
     ]).catch((err) => {
+      // Take the snapshot before closing: closing fires onclose
+      // synchronously for every still-open subscription.
+      timedOutAt = connectedRelays.filter((u) => !settled.has(u));
       // Close every open subscription so a timeout doesn't leak the socket
       // (previously only the per-relay 'eose' path closed it).
       for (const sub of subs) sub.close('timeout');
@@ -435,13 +475,15 @@ export class AMBRelayClient {
       }
       return events;
     });
+    clearTimeout(timeoutHandle); // avoid a dangling timer when the race's other branch won
 
     if (opts?.diag) {
       opts.diag.unreachable = unreachable;
       // A connected relay that never reached EOSE/close by the deadline was
       // still hanging — report it so an empty result isn't mistaken for an
-      // empty corpus.
-      opts.diag.timedOut = connectedRelays.filter((u) => !settled.has(u));
+      // empty corpus. Use the pre-close snapshot when a timeout happened;
+      // on a clean finish `settled` already covers every connected relay.
+      opts.diag.timedOut = timedOutAt ?? connectedRelays.filter((u) => !settled.has(u));
     }
     return result;
   }
@@ -451,12 +493,14 @@ export class AMBRelayClient {
   private async queryRelays(
     filter: Filter,
     relaySelection?: string[],
-    diag?: RelayQueryDiagnostics
+    diag?: RelayQueryDiagnostics,
+    timeoutMsOverride?: number
   ): Promise<NostrEvent[]> {
     const relays = this.resolveRelays(relaySelection);
     if (relays.length === 0) {
       return [];
     }
+    const timeoutMs = timeoutMsOverride ?? this.queryTimeoutMs;
 
     // Reimplements pool.querySync's subscribe-until-every-relay-EOSEs
     // behavior directly (rather than calling querySync) so a timeout can
@@ -472,6 +516,15 @@ export class AMBRelayClient {
     await new Promise<void>((resolve) => {
       let timer: ReturnType<typeof setTimeout>;
       const closer = this.pool.subscribeManyEose(relays, filter, {
+        // Without `maxWait`, nostr-tools threads no `eoseTimeout` down to
+        // the per-relay Subscription, which then falls back to the relay's
+        // baseEoseTimeout (4400ms) and synthesizes a fake EOSE at that
+        // point — silently cutting off any relay slower than that,
+        // regardless of our own timeoutMs. (This also raises the
+        // connection-attempt timeout to ~timeoutMs-1s via
+        // AbstractSimplePool's own maxWaitForConnection/maxWait handling,
+        // which is an acceptable trade-off for not truncating slow relays.)
+        maxWait: timeoutMs,
         onevent: (event: NostrEvent) => {
           if (!seen.has(event.id)) {
             seen.add(event.id);
@@ -487,7 +540,7 @@ export class AMBRelayClient {
         timedOut = true;
         closer.close('timeout'); // stop leaking the subscription/socket
         resolve();
-      }, this.queryTimeoutMs);
+      }, timeoutMs);
     });
 
     if (diag) {

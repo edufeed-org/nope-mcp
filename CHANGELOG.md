@@ -18,14 +18,22 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
   are under licenses this server doesn't return instead. The actor-spelling
   hint is now shown only when the actor name truly matched nothing,
   regardless of the license filter.
-- Relay query timeout (`search_resources`, `search_content`, every other
-  relay read) no longer discards events already received when it fires —
-  it now returns them and flags the relay as incomplete in the response's
-  `relaysIncomplete`/diagnostics instead of a misleading empty/partial
-  result (observed on `sodix` answering in 11-17s under reindex load,
-  past the old 10s budget). The timeout is now configurable via
-  `RELAY_QUERY_TIMEOUT_MS` (default 25000, up from 10000) and closes the
-  stalled subscription instead of leaking it.
+- Relay queries (`search_resources`, `search_content`, every other relay
+  read) no longer get silently truncated at nostr-tools' internal 4.4s
+  default EOSE timeout — our own, much longer, query timeout wasn't being
+  passed down (`maxWait`/`eoseTimeout`), so any relay slower than that was
+  cut off with no `timedOut` diagnostic at all (the likely real cause of
+  `sodix` coming back empty under reindex load, answering in 11-17s). On
+  top of that, the previous timeout fix (now corrected) also discarded
+  events already received when the deadline fired instead of returning
+  them, under-counted which relays actually timed out across multiple
+  relays, and could resolve a multi-relay query after only the first
+  relay's EOSE. The timeout is configurable via `RELAY_QUERY_TIMEOUT_MS`
+  (default 25000, up from 10000) and closes the stalled subscription
+  instead of leaking it. Zero-result follow-up probes (the license hint
+  above, `resolve_publisher`'s did-you-mean fallback) now use a short
+  5s budget instead of the full query timeout, so a worst-case empty
+  response doesn't chain into tens of seconds of added latency.
 
 ## [0.7.0] - 2026-10-29
 

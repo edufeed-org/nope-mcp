@@ -87,9 +87,10 @@ const MAX_CANDIDATES = 5;
 export async function findActorCandidates(
   client: Pick<AMBRelayClient, 'search'>,
   name: string,
-  relays?: string[]
+  relays?: string[],
+  timeoutMs?: number
 ): Promise<ActorCandidate[]> {
-  const events = await client.search(name, { limit: SAMPLE_LIMIT }, relays);
+  const events = await client.search(name, { limit: SAMPLE_LIMIT }, relays, undefined, timeoutMs);
   const resources = eventsToAMBResources(events).map((r) => r.resource);
   return rankActorCandidates(name, aggregateActorNames(resources)).slice(0, MAX_CANDIDATES);
 }
