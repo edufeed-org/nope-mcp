@@ -1,7 +1,7 @@
 import type { LicenseFilter } from './license/classify.js';
 
 export const SERVER_NAME = 'nope-mcp';
-export const SERVER_VERSION = '0.6.1';
+export const SERVER_VERSION = '0.7.0';
 
 /**
  * The two-tier license/accessLevel sentence, always present: every learning
