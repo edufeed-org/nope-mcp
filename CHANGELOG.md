@@ -6,6 +6,8 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-29
+
 ### Fixed
 
 - `search_resources`/`search_content`: a zero-result response caused only by
