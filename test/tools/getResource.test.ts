@@ -179,7 +179,7 @@ function getResourceDescription(licenseFilterMax: 'open' | 'any'): string {
 describe('get_resource tool description matches the licenseFilterMax setting', () => {
   it('mentions accessLevel and the deprecated openLicense flag regardless of the ceiling', () => {
     for (const description of [getResourceDescription('open'), getResourceDescription('any')]) {
-      expect(description).toMatch(/accessLevel \("full" for Creative Commons, Public Domain and free software\/documentation licenses, incl\. DINI-AG-KIM license types; "metadata-only"/);
+      expect(description).toMatch(/accessLevel \("full" for Creative Commons, Public Domain and free software\/documentation licenses, and DINI-AG-KIM license types that resolve to one of these; "metadata-only"/);
       expect(description).toMatch(/openLicense is kept for compatibility \(deprecated; use accessLevel\)/);
     }
   });

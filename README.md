@@ -424,7 +424,7 @@ Each returned resource includes the standard AMB fields plus:
 - `nostr.naddr` — NIP-19 addressable identifier (`kind=30142`, pubkey, d-tag). Useful for any Nostr client.
 - `url` — direct link to the edufeed-app page for this resource. **Only present when `EDUFEED_APP_BASE_URL` is configured.** LLM clients should cite this as a markdown link (`[name](url)`) when recommending the resource so users can open it.
 - `license` — `{ id, label }` classified from the resource's `license:id` tag, or `null` when unlicensed/unrecognized.
-- `accessLevel` — `"full"` (Creative Commons, Public Domain or free software/documentation license, incl. DINI-AG-KIM license types; all `license:id` tags are classified together) or `"metadata-only"` (any other or no license); only `"full"` resources have indexed fulltext, snippets and passages.
+- `accessLevel` — `"full"` (Creative Commons, Public Domain or free software/documentation license, or a DINI-AG-KIM license type that resolves to one of these; all `license:id` tags are classified together) or `"metadata-only"` (any other or no license); only `"full"` resources have indexed fulltext, snippets and passages.
 
 Both fields are always present, whatever `licenseFilter` was applied —
 `search_resources` returns every tier by default. Its top-level response

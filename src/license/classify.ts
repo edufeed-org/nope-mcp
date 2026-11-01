@@ -35,7 +35,9 @@ export const LICENSE_TEXT = {
     'CC0, Public Domain, CC BY, CC BY-SA, their DINI-AG-KIM license-type equivalents, ' +
     'and free software/documentation licenses (GPL, LGPL, AGPL, GFDL, MIT, Apache 2.0, BSD)',
   ccAny: 'all of "open" plus every other Creative Commons license, incl. KIM non-commercial/no-derivatives',
-  full: 'Creative Commons, Public Domain and free software/documentation licenses, incl. DINI-AG-KIM license types',
+  full:
+    'Creative Commons, Public Domain and free software/documentation licenses, and ' +
+    'DINI-AG-KIM license types that resolve to one of these',
 } as const;
 export type AccessLevel = 'full' | 'metadata-only';
 export type LicenseFilter = 'open' | 'cc-any' | 'any';

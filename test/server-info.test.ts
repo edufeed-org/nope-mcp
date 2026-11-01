@@ -27,7 +27,7 @@ describe('buildServerInstructions', () => {
     const any = buildServerInstructions({ licenseFilterMax: 'any' });
     for (const text of [open, any]) {
       expect(text).not.toMatch(/limited to open licenses/);
-      expect(text).toMatch(/accessLevel \("full" for Creative Commons, Public Domain and free software\/documentation licenses, incl\. DINI-AG-KIM license types; "metadata-only"/);
+      expect(text).toMatch(/accessLevel \("full" for Creative Commons, Public Domain and free software\/documentation licenses, and DINI-AG-KIM license types that resolve to one of these; "metadata-only"/);
       expect(text).toMatch(/licenseFilter narrows search_resources, search_content and search_passages/);
       expect(text).toMatch(/"open" \(CC0, Public Domain, CC BY, CC BY-SA, their DINI-AG-KIM license-type equivalents, and free software\/documentation licenses \(GPL, LGPL, AGPL, GFDL, MIT, Apache 2\.0, BSD\)\)/);
       expect(text).toMatch(/"cc-any" \(all of "open" plus every other Creative Commons license, incl\. KIM non-commercial\/no-derivatives\)/);

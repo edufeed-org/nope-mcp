@@ -304,6 +304,29 @@ describe('runSearchPassages license tiers', () => {
     expect(out.passages[1]).not.toHaveProperty('creator');
   });
 
+  it('classifies an indexer amb.license array over ALL values (KIM multi-tag)', async () => {
+    const KIM = (t: string) => `https://w3id.org/kim/license/${t}`;
+    const hits = () => [
+      hit(res('bysa'), 1.0, { amb: { name: 'SA', license: [KIM('attribution'), KIM('shareAlike')] } }),
+      hit(res('bync'), 0.9, { amb: { name: 'NC', license: [KIM('attribution'), KIM('nonCommercial')] } }),
+    ];
+    const open = await runSearchPassages(
+      deps({ searchChunks: vi.fn(async () => ({ total: 2, hits: hits() })) }),
+      { question: 'q', kinds: [30142], licenseFilter: 'open' }, undefined
+    );
+    expect(open.passages.map((p) => p.event_coord)).toEqual([res('bysa')]);
+    expect(open.passages[0]).toMatchObject({ license: { id: KIM('attribution'), label: 'BY-SA (KIM)' } });
+    expect(JSON.stringify(open)).not.toContain(res('bync'));
+    const ccAny = await runSearchPassages(
+      deps({ searchChunks: vi.fn(async () => ({ total: 2, hits: hits() })) }),
+      { question: 'q', kinds: [30142], licenseFilter: 'cc-any' }, undefined
+    );
+    expect(ccAny.passages.map((p) => p.license)).toEqual([
+      { id: KIM('attribution'), label: 'BY-SA (KIM)' },
+      { id: KIM('attribution'), label: 'BY-NC (KIM)' },
+    ]);
+  });
+
   it('an amb-less released passage carries license null and no attribution', async () => {
     const d = deps({ searchChunks: vi.fn(async () => ({ total: 1, hits: [hit(res('miss'), 1.0, { amb: undefined })] })) });
     const out = await runSearchPassages(d, { question: 'q', kinds: [30142] }, undefined);
