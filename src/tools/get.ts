@@ -8,7 +8,7 @@ import { eventToAMBResource, toSimplifiedResource } from '../utils/transform.js'
 import { hasContentTransform, transformContentEvent } from '../content/transform.js';
 import { READ_ONLY } from './annotations.js';
 import { eventHasOpenLicense } from '../license/open.js';
-import type { LicenseFilter } from '../license/classify.js';
+import { LICENSE_TEXT, type LicenseFilter } from '../license/classify.js';
 
 /** Decode an naddr into a d-tag + author + kind for getByDTag; null on malformed/non-naddr input. */
 export function naddrToLookup(
@@ -138,8 +138,8 @@ function openLicenseNote(licenseFilterMax: LicenseFilter): string {
       : '';
   return (
     'get_resource is never license-filtered: a learning resource carries license ' +
-    '({id, label}, or null when unlicensed) and accessLevel ("full" for Creative Commons and ' +
-    'Public Domain licenses, "metadata-only" otherwise). Only accessLevel:"full" resources have ' +
+    `({id, label}, or null when unlicensed) and accessLevel ("full" for ${LICENSE_TEXT.full}; ` +
+    '"metadata-only" otherwise). Only accessLevel:"full" resources have ' +
     'indexed fulltext, snippets and passages — present a "metadata-only" resource by its title, ' +
     'description, license and link, never quoted beyond its metadata, and always name the ' +
     'license and the creator/publisher. ' +

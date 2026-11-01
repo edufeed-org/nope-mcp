@@ -6,6 +6,22 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ## [Unreleased]
 
+### Changed
+
+- License classification reads ALL `license:id` tags of a learning resource
+  (falling back to the plain `license` tag) and follows the shared
+  amb-mcp/amb-indexer contract: DINI AG KIM license-type concepts
+  (`https://w3id.org/kim/license/…`) are composed as a set into a CC variant
+  (e.g. LEHRE LADEN `[attribution, shareAlike]` → `BY-SA (KIM)`, open;
+  `[attribution, nonCommercial]` → `BY-NC (KIM)`, cc; `noLicense` → other),
+  and GPL/LGPL/AGPL/GFDL/MIT/Apache-2.0/BSD URIs are now `open` (full
+  access) instead of `unknown`. The de.wikipedia "Urheberrecht (Deutschland)"
+  marker is labelled "Alle Rechte vorbehalten" (still metadata-only). A CC
+  URI on the event still takes precedence. `licenseFilter: "open"` /
+  `"cc-any"`, `accessLevel` and `get_resource`'s `openLicense` follow suit;
+  the relay-side `license.id` prefilter lists include the KIM terms and the
+  stored free-licence spellings.
+
 ## [0.7.1] - 2026-10-29
 
 ### Fixed

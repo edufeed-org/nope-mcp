@@ -1,5 +1,7 @@
 import type { PassageHit } from '../indexer/client.js';
-import { accessLevelFor, classifyLicense, matchesLicenseFilter, type LicenseFilter } from '../license/classify.js';
+import {
+  accessLevelFor, classifyLicenses, licenseValuesOf, matchesLicenseFilter, type LicenseFilter,
+} from '../license/classify.js';
 
 /**
  * Vector weight sent to the indexer (Typesense rank-fusion `alpha`; 1 = vector
@@ -79,8 +81,7 @@ export function partitionPassageHits(
       if (filter !== 'open') released.push(hit);
       continue;
     }
-    const license = hit.amb?.license;
-    const { group } = classifyLicense(typeof license === 'string' ? license : undefined);
+    const { group } = classifyLicenses(licenseValuesOf(hit.amb?.license));
     if (!matchesLicenseFilter(group, filter)) continue;
     const full = accessLevelFor(group) === 'full' && hit.access_level !== 'metadata-only' && hasText;
     (full ? released : metadataOnly).push(hit);

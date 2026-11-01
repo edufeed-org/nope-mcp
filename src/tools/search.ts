@@ -11,7 +11,7 @@ import { eventsToAMBResources, toSimplifiedResource, type SimplifiedAMBResource 
 import { findActorCandidates, type ActorCandidate } from './resolvePublisher.js';
 import { READ_ONLY } from './annotations.js';
 import {
-  clampLicenseFilter, eventLicense, matchesLicenseFilter, type LicenseFilter,
+  LICENSE_TEXT, clampLicenseFilter, eventLicense, matchesLicenseFilter, type LicenseFilter,
 } from '../license/classify.js';
 import { LICENSE_FILTER_SCOPE, licenseOnlyZeroHint } from './licenseHint.js';
 
@@ -152,9 +152,9 @@ export function registerSearchTool(
         'AMB relay. ' +
         'Every learning resource is returned by default, whatever its license; each result ' +
         'carries license ({id, label}, or null when unlicensed) and accessLevel ("full" for ' +
-        'Creative Commons and Public Domain, "metadata-only" otherwise). licenseFilter narrows ' +
-        'the results: "open" = CC0, Public Domain, CC BY, CC BY-SA; "cc-any" = all Creative ' +
-        'Commons licenses and Public Domain; "any" = also unlicensed and all-rights-reserved ' +
+        `${LICENSE_TEXT.full}; "metadata-only" otherwise). licenseFilter narrows ` +
+        `the results: "open" = ${LICENSE_TEXT.open}; "cc-any" = ${LICENSE_TEXT.ccAny}; ` +
+        '"any" = also unlicensed and all-rights-reserved ' +
         'resources. When citing a resource, always name its creator and publisher. ' +
         (licenseFilterMax !== 'any'
           ? `This server limits results to licenseFilter '${licenseFilterMax}'. `
@@ -234,8 +234,8 @@ export function registerSearchTool(
           .enum(['open', 'cc-any', 'any'])
           .optional()
           .describe(
-            'Restrict results by license: "open" (CC0, Public Domain, CC BY, CC BY-SA), ' +
-              '"cc-any" (all Creative Commons and Public Domain) or "any" (every resource, ' +
+            `Restrict results by license: "open" (${LICENSE_TEXT.open}), ` +
+              `"cc-any" (${LICENSE_TEXT.ccAny}) or "any" (every resource, ` +
               "including unlicensed and all-rights-reserved). Default: the server's ceiling " +
               '(normally any).'
           ),

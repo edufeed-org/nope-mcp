@@ -48,7 +48,7 @@ describe('partitionPassageHits', () => {
   });
 
   it('sends a 30142 hit whose license is not CC/PD to metadataOnly even with text', () => {
-    const arr = h(`30142:${pk}:arr`, { text: 't', amb: { license: 'https://w3id.org/kim/license/attribution' } });
+    const arr = h(`30142:${pk}:arr`, { text: 't', amb: { license: 'https://de.wikipedia.org/wiki/Urheberrecht_(Deutschland)' } });
     const unlicensed = h(`30142:${pk}:none`, { text: 't', amb: { name: 'x' } });
     expect(partitionPassageHits([arr, unlicensed], 'any')).toEqual({ released: [], metadataOnly: [arr, unlicensed] });
   });
@@ -65,9 +65,17 @@ describe('partitionPassageHits', () => {
     expect(partitionPassageHits([nc, open], 'open')).toEqual({ released: [open], metadataOnly: [] });
   });
 
+  it('classifies an array amb.license over all values (multi-tag KIM)', () => {
+    const KIM = (t: string) => `https://w3id.org/kim/license/${t}`;
+    const bysa = h(`30142:${pk}:bysa`, { text: 't', amb: { license: [KIM('attribution'), KIM('shareAlike')] } });
+    const bync = h(`30142:${pk}:bync`, { text: 't', amb: { license: [KIM('attribution'), KIM('nonCommercial')] } });
+    expect(partitionPassageHits([bysa, bync], 'open')).toEqual({ released: [bysa], metadataOnly: [] });
+    expect(partitionPassageHits([bysa, bync], 'cc-any')).toEqual({ released: [bysa, bync], metadataOnly: [] });
+  });
+
   it('with cc-any, metadataOnly is empty', () => {
     const nc = h(`30142:${pk}:nc`, { text: 't', amb: ncSa });
-    const arr = h(`30142:${pk}:arr`, { amb: { license: 'https://w3id.org/kim/license/attribution' } });
+    const arr = h(`30142:${pk}:arr`, { amb: { license: 'https://de.wikipedia.org/wiki/Urheberrecht_(Deutschland)' } });
     const none = h(`30142:${pk}:none`);
     const out = partitionPassageHits([nc, arr, none], 'cc-any');
     expect(out).toEqual({ released: [nc], metadataOnly: [] });

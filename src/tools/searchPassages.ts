@@ -18,7 +18,7 @@ import {
 import { READ_ONLY } from './annotations.js';
 import { snippetOnlyReason } from '../server-info.js';
 import {
-  classifyLicense, clampLicenseFilter, type LicenseFilter, type LicenseInfo,
+  LICENSE_TEXT, classifyLicenses, clampLicenseFilter, licenseValuesOf, type LicenseFilter, type LicenseInfo,
 } from '../license/classify.js';
 
 export interface FetchSpellResult {
@@ -77,8 +77,7 @@ function stringList(v: unknown): string[] | undefined {
 }
 
 function ambLicense(hit: PassageHit): LicenseInfo | null {
-  const raw = hit.amb?.license;
-  return classifyLicense(typeof raw === 'string' ? raw : undefined).license;
+  return classifyLicenses(licenseValuesOf(hit.amb?.license)).license;
 }
 
 function attribution(hit: PassageHit): { creator?: string[]; publisher?: string[] } {
@@ -355,14 +354,14 @@ export function registerSearchPassagesTool(
         'capped at two passages per document; a passage with only a snippet and no text ' +
         snippetOnlyReason() +
         ' — say so instead of guessing. ' +
-        'Passages come from Creative Commons and Public Domain learning resources and from ' +
+        `Passages come from learning resources under ${LICENSE_TEXT.full} and from ` +
         'articles, wikis, publications and the other content kinds. Other matching learning ' +
         'resources appear in `metadataOnlyMatches` (naddr, title, license, creator/publisher, ' +
         'sourcePage) without text, because their license does not permit quoting — point the ' +
         'user to them by title, license and link, never quote or paraphrase them as content. ' +
         'Cite the license and the creator/publisher with every learning-resource passage. ' +
-        'licenseFilter narrows learning resources: "open" = CC0, Public Domain, CC BY, ' +
-        'CC BY-SA; "cc-any" = all Creative Commons and Public Domain (normally no metadataOnlyMatches); ' +
+        `licenseFilter narrows learning resources: "open" = ${LICENSE_TEXT.open}; ` +
+        `"cc-any" = ${LICENSE_TEXT.ccAny} (normally no metadataOnlyMatches); ` +
         '"any" = also unlicensed and all-rights-reserved resources, as metadataOnlyMatches. ' +
         (licenseFilterMax !== 'any'
           ? `This server limits results to licenseFilter '${licenseFilterMax}'. `
@@ -399,8 +398,8 @@ export function registerSearchPassagesTool(
           .enum(['open', 'cc-any', 'any'])
           .optional()
           .describe(
-            'Restrict learning-resource (30142) hits by license: "open" (CC0, Public Domain, ' +
-              'CC BY, CC BY-SA), "cc-any" (all Creative Commons and Public Domain) or "any" ' +
+            `Restrict learning-resource (30142) hits by license: "open" (${LICENSE_TEXT.open}), ` +
+              `"cc-any" (${LICENSE_TEXT.ccAny}) or "any" ` +
               "(every resource, including unlicensed and all-rights-reserved). Default: the " +
               "server's ceiling (normally any). Other content types are never license-filtered."
           ),

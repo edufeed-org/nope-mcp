@@ -21,3 +21,19 @@ export function licenseTagValue(event: NostrEvent): string | undefined {
   if (id) return id;
   return event.tags.find((t) => t[0] === 'license')?.[1]?.trim() || undefined;
 }
+
+/**
+ * ALL of a kind-30142 event's `license:id` values (trimmed, empty ones
+ * dropped, in tag order) — the input of classifyLicenses. Events may carry
+ * several, e.g. DINI AG KIM [attribution, shareAlike]. When there is none,
+ * falls back to the single plain `license` tag, like licenseTagValue.
+ */
+export function licenseTagValues(event: NostrEvent): string[] {
+  const ids = event.tags
+    .filter((t) => t[0] === 'license:id')
+    .map((t) => t[1]?.trim() ?? '')
+    .filter((v) => v.length > 0);
+  if (ids.length > 0) return ids;
+  const plain = event.tags.find((t) => t[0] === 'license')?.[1]?.trim();
+  return plain ? [plain] : [];
+}

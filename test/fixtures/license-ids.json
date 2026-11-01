@@ -1,5 +1,5 @@
 {
-  "description": "Distinct license:id tag values on kind-30142 events, sampled read-only with nak req (newest pages + older jump pages) on 2026-10-02. Used to test isOpenLicense and to derive OPEN_LICENSE_URIS.",
+  "description": "Distinct license:id tag values on kind-30142 events, sampled read-only with nak req (newest pages + older jump pages) on 2026-10-02. Used to test isOpenLicense and to derive OPEN_LICENSE_URIS. Free software/documentation licence spellings (GNU/OSI/Apache) missing from that sample were added on 2026-11-01 from exact license.id queries against wss://oersi.edufeed.org (count = matches found then).",
   "sampledAt": "2026-10-02",
   "relays": {
     "wss://amb-relay.edufeed.org": {
@@ -421,6 +421,62 @@
     },
     {
       "id": "https://www.gnu.org/licenses/gpl-3.0-standalone.html",
+      "count": 1,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://www.gnu.org/licenses/fdl-1.3.html",
+      "count": 36,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://opensource.org/licenses/MIT",
+      "count": 17,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://opensource.org/license/mit",
+      "count": 16,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://www.gnu.org/licenses/gpl-3.0.html",
+      "count": 3,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://www.gnu.org/licenses/fdl-1.3",
+      "count": 2,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://www.gnu.org/licenses/gpl-3.0.txt",
+      "count": 1,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "http://www.gnu.org/licenses/gpl-3.0",
+      "count": 1,
+      "relays": [
+        "wss://oersi.edufeed.org"
+      ]
+    },
+    {
+      "id": "https://opensource.org/license/bsd-3-clause",
       "count": 1,
       "relays": [
         "wss://oersi.edufeed.org"

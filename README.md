@@ -79,7 +79,7 @@ cp .env.example .env
 | `INDEXER_ENDPOINTS` | `search_passages` | _(unset — tool disabled)_ | Comma-separated `wss://relay=https://indexer` pairs mapping each AMB relay to its amb-indexer base URL. Enables `search_passages`. |
 | `INDEXER_API_TOKEN` | `search_passages` | _(unset)_ | Bearer token for the indexer's `/search_chunks` (shared default for all endpoints). |
 | `INDEXER_API_TOKENS` | `search_passages` | _(unset)_ | Per-relay token overrides, comma-separated `wss://relay=token` pairs — each deployed indexer instance has its own token. Every `INDEXER_ENDPOINTS` entry must be covered by this or `INDEXER_API_TOKEN`; a partially tokened config fails at startup. |
-| `LICENSE_FILTER_MAX` | all transports | `any` | Ceiling for the learning-resource `licenseFilter` search parameter: `open` (CC0, Public Domain Mark, CC BY, CC BY-SA), `cc-any` (every Creative Commons license and Public Domain) or `any` (also unlicensed and all-rights-reserved resources). A wider request is narrowed to the ceiling; `search_resources`, `search_content` and `search_passages` report the applied filter as `licenseFilter` and adds `licenseFilterClamped: true` when it narrowed. Other content kinds carry no license and are always included; `get_resource` is never filtered. An invalid value fails at startup. The legacy `OPEN_LICENSES_ONLY=true` still maps to `open` (`false`/`0`/`no`/`off` to `any`) when `LICENSE_FILTER_MAX` is unset, with a deprecation log line. |
+| `LICENSE_FILTER_MAX` | all transports | `any` | Ceiling for the learning-resource `licenseFilter` search parameter: `open` (CC0, Public Domain, CC BY, CC BY-SA, their DINI-AG-KIM license-type equivalents, and free software/documentation licenses: GPL, LGPL, AGPL, GFDL, MIT, Apache 2.0, BSD), `cc-any` (all of `open` plus every other Creative Commons license, incl. KIM non-commercial/no-derivatives) or `any` (also unlicensed and all-rights-reserved resources). A wider request is narrowed to the ceiling; `search_resources`, `search_content` and `search_passages` report the applied filter as `licenseFilter` and adds `licenseFilterClamped: true` when it narrowed. Other content kinds carry no license and are always included; `get_resource` is never filtered. An invalid value fails at startup. The legacy `OPEN_LICENSES_ONLY=true` still maps to `open` (`false`/`0`/`no`/`off` to `any`) when `LICENSE_FILTER_MAX` is unset, with a deprecation log line. |
 | `RELAY_QUERY_TIMEOUT_MS` | all transports | `25000` | Per-query timeout (milliseconds) for `search_resources`, `search_content`, and every other relay read. On a timeout the events already received are returned (not discarded) and the relay is reported in `relaysIncomplete`/`timedOut` diagnostics; the stalled subscription is closed rather than left open. Raise this if a relay routinely answers slower than the default (the amb-relay's own search budget is ~20s). An invalid (non-numeric or non-positive) value fails at startup. |
 | `SPELL_RELAYS` | `search_passages` | `wss://relay.edufeed.org` | Relays to fetch kind-777 spells (and kind-3 contact lists) from. |
 | `LOG_LEVEL` | all transports | `info` | Per-tool-call logging on **stderr** (stdout belongs to the stdio transport). Every call emits one JSON line: `{"ts":"2026-09-14T12:00:00.000Z","tool":"search_passages","ms":412,"ok":true,"session":"<id>","args":{"question":"…","kinds":[30142]}}` — `ok` is `false` for `isError` results, thrown errors, and text results whose JSON body carries an `error` code (typed failures such as `relay_unreachable`) — `error` then holds the message or code; strings in `args` are cut at 120 chars, arrays longer than five collapse to `{length, head}`. `info` (default) logs every call, `warn`/`error` log failures only, `silent` disables the lines. |
@@ -284,7 +284,7 @@ Parameters:
 | `authors` | string[] | Author pubkeys (hex) |
 | `limit` | number | Max results, 1-250 (default 20) |
 | `community` | string | Return content shared into this community (hex pubkey or npub) |
-| `licenseFilter` | `"open"` \| `"cc-any"` \| `"any"` | Restrict educational-resource (30142) results by license: `open` (CC0, Public Domain, CC BY, CC BY-SA), `cc-any` (all Creative Commons + Public Domain), `any` (every resource, including unlicensed/all-rights-reserved). Default: the server's ceiling (normally `any`). Other content types are never license-filtered. |
+| `licenseFilter` | `"open"` \| `"cc-any"` \| `"any"` | Restrict educational-resource (30142) results by license: `open` (CC0, Public Domain, CC BY, CC BY-SA, their DINI-AG-KIM license-type equivalents, and free software/documentation licenses: GPL, LGPL, AGPL, GFDL, MIT, Apache 2.0, BSD), `cc-any` (all of `open` plus every other Creative Commons license, incl. KIM non-commercial/no-derivatives), `any` (every resource, including unlicensed/all-rights-reserved). Default: the server's ceiling (normally `any`). Other content types are never license-filtered. |
 | `relays` | string[] | Restrict to specific relays — by full URL or short name (`oersi`, `sodix`). See [`list_relays`](#list_relays). |
 
 Each result: `{ type, kind, title, url?, naddr?, snippet?, score?, ...type-specific }`.
@@ -350,7 +350,7 @@ Parameters:
 | `me` | string | Who `$me` refers to (npub/hex); defaults to the calling identity |
 | `relays` | string[] | Relay selection (full URL or short name); first mapped relay is used |
 | `limit` | number | Passages to return, 1-25 (default 10); also caps `metadataOnlyMatches` |
-| `licenseFilter` | `"open"` \| `"cc-any"` \| `"any"` | Restrict learning-resource (30142) hits by license: `open` (CC0, Public Domain, CC BY, CC BY-SA), `cc-any` (all Creative Commons + Public Domain), `any` (every resource, including unlicensed/all-rights-reserved). Default: the server's ceiling (normally `any`). Other content types are never license-filtered. |
+| `licenseFilter` | `"open"` \| `"cc-any"` \| `"any"` | Restrict learning-resource (30142) hits by license: `open` (CC0, Public Domain, CC BY, CC BY-SA, their DINI-AG-KIM license-type equivalents, and free software/documentation licenses: GPL, LGPL, AGPL, GFDL, MIT, Apache 2.0, BSD), `cc-any` (all of `open` plus every other Creative Commons license, incl. KIM non-commercial/no-derivatives), `any` (every resource, including unlicensed/all-rights-reserved). Default: the server's ceiling (normally `any`). Other content types are never license-filtered. |
 
 Response: `passages` are released, quotable fulltext hits (resource hits add
 `accessLevel: "full"`, `license` and `creator`/`publisher`).
@@ -390,7 +390,7 @@ Parameters:
 | `authors` | string[] | Filter by author pubkeys (hex) — e.g. from `resolve_author` or `list_known_authors` |
 | `since` / `until` | number | Unix timestamp bounds on resource creation time |
 | `limit` | number | Max results, 1-250 (default: 20) |
-| `licenseFilter` | `"open"` \| `"cc-any"` \| `"any"` | Restrict by license tier: `open` (CC0, Public Domain, CC BY, CC BY-SA), `cc-any` (all Creative Commons + Public Domain), `any` (every resource, including unlicensed/all-rights-reserved). Default: the server's ceiling (normally `any`); a wider request is narrowed and reported via `licenseFilterClamped`. |
+| `licenseFilter` | `"open"` \| `"cc-any"` \| `"any"` | Restrict by license tier: `open` (CC0, Public Domain, CC BY, CC BY-SA, their DINI-AG-KIM license-type equivalents, and free software/documentation licenses: GPL, LGPL, AGPL, GFDL, MIT, Apache 2.0, BSD), `cc-any` (all of `open` plus every other Creative Commons license, incl. KIM non-commercial/no-derivatives), `any` (every resource, including unlicensed/all-rights-reserved). Default: the server's ceiling (normally `any`); a wider request is narrowed and reported via `licenseFilterClamped`. |
 | `relays` | string[] | Restrict to specific relays — by full URL or short name (`oersi`, `sodix`) |
 
 The `subjectLabel` / `resourceTypeLabel` / `educationalLevelLabel` filters are
@@ -424,7 +424,7 @@ Each returned resource includes the standard AMB fields plus:
 - `nostr.naddr` — NIP-19 addressable identifier (`kind=30142`, pubkey, d-tag). Useful for any Nostr client.
 - `url` — direct link to the edufeed-app page for this resource. **Only present when `EDUFEED_APP_BASE_URL` is configured.** LLM clients should cite this as a markdown link (`[name](url)`) when recommending the resource so users can open it.
 - `license` — `{ id, label }` classified from the resource's `license:id` tag, or `null` when unlicensed/unrecognized.
-- `accessLevel` — `"full"` (Creative Commons or Public Domain license) or `"metadata-only"` (any other or no license); only `"full"` resources have indexed fulltext, snippets and passages.
+- `accessLevel` — `"full"` (Creative Commons, Public Domain or free software/documentation license, incl. DINI-AG-KIM license types; all `license:id` tags are classified together) or `"metadata-only"` (any other or no license); only `"full"` resources have indexed fulltext, snippets and passages.
 
 Both fields are always present, whatever `licenseFilter` was applied —
 `search_resources` returns every tier by default. Its top-level response
@@ -434,7 +434,8 @@ narrowing to the server's `LICENSE_FILTER_MAX` ceiling) and
 `get_resource` is never license-filtered; it mirrors `resource.accessLevel`
 at the top level as `accessLevel`, and also returns the deprecated
 `openLicense` boolean (`true` only for the `open` tier — CC0, Public Domain,
-CC BY, CC BY-SA — kept for compatibility; prefer `accessLevel`).
+CC BY, CC BY-SA, their KIM equivalents and free software/documentation
+licenses — kept for compatibility; prefer `accessLevel`).
 
 `search_content`, `search_resources`, and `search_calendar_events` add
 `relaysIncomplete` + a `warning` when a selected relay timed out or was

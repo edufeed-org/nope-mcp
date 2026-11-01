@@ -131,6 +131,23 @@ describe('runContentSearch with licenseFilter', () => {
     expect(out.total).toBe(2);
   });
 
+  it('post-filters over ALL license:id tags (KIM attribution + nonCommercial is not open)', async () => {
+    const KIM = (t: string) => `https://w3id.org/kim/license/${t}`;
+    const kimEvt = (id: string, terms: string[]) =>
+      evt(30142, id, [['d', id], ['name', `R ${id}`], ...terms.map((t) => ['license:id', KIM(t)])]);
+    const client = recordingClient([
+      kimEvt('bysa', ['attribution', 'shareAlike']),
+      kimEvt('bync', ['attribution', 'nonCommercial']),
+    ]);
+    const open = await runContentSearch(client, { types: ['resource'], licenseFilter: 'open' });
+    expect(open.results.map((r) => (r as { title?: string }).title)).toEqual(['R bysa']);
+    const ccAny = await runContentSearch(client, { types: ['resource'], licenseFilter: 'cc-any' });
+    expect(ccAny.results.map((r) => (r as { license?: unknown }).license)).toEqual([
+      { id: KIM('attribution'), label: 'BY-SA (KIM)' },
+      { id: KIM('attribution'), label: 'BY-NC (KIM)' },
+    ]);
+  });
+
   it('caps the over-fetch at the relay maximum of 250', async () => {
     const client = recordingClient([]);
     await runContentSearch(client, { limit: 200, licenseFilter: 'open' });

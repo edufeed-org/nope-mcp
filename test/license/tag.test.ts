@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { NostrEvent } from 'nostr-tools';
-import { licenseTagValue } from '../../src/license/tag.js';
+import { licenseTagValue, licenseTagValues } from '../../src/license/tag.js';
 
 const ev = (tags: string[][]): NostrEvent => ({
   id: 'x', pubkey: 'a'.repeat(64), created_at: 1, kind: 30142, tags, content: '', sig: 's',
@@ -41,5 +41,25 @@ describe('licenseTagValue', () => {
 
   it('returns undefined when neither tag is present', () => {
     expect(licenseTagValue(ev([['d', 'x']]))).toBeUndefined();
+  });
+});
+
+describe('licenseTagValues', () => {
+  const A = 'https://w3id.org/kim/license/attribution';
+  const SA = 'https://w3id.org/kim/license/shareAlike';
+  const plain = 'https://creativecommons.org/licenses/by/4.0/';
+
+  it('returns every license:id value in tag order, trimmed, empty ones dropped', () => {
+    expect(licenseTagValues(ev([['license:id', ` ${A}`], ['d', 'x'], ['license:id', ''], ['license:id', SA]])))
+      .toEqual([A, SA]);
+  });
+
+  it('ignores the plain license tag when any license:id is set', () => {
+    expect(licenseTagValues(ev([['license', plain], ['license:id', A]]))).toEqual([A]);
+  });
+
+  it('falls back to the single plain license tag', () => {
+    expect(licenseTagValues(ev([['license:id', '  '], ['license', plain]]))).toEqual([plain]);
+    expect(licenseTagValues(ev([['d', 'x']]))).toEqual([]);
   });
 });

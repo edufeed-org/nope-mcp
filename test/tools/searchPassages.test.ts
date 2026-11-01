@@ -259,7 +259,7 @@ describe('runSearchPassages license tiers', () => {
   const art = `30023:${'b'.repeat(64)}:art`;
   const BY = 'https://creativecommons.org/licenses/by/4.0/';
   const NC_SA = 'https://creativecommons.org/licenses/by-nc-sa/4.0/';
-  const ARR = 'https://w3id.org/kim/license/attribution';
+  const ARR = 'https://de.wikipedia.org/wiki/Urheberrecht_(Deutschland)';
   const hit = (coord: string, score: number, extra: Record<string, unknown> = {}, idx = 0) =>
     ({ ...HIT, chunk_id: `${coord}:${idx}`, chunk_idx: idx, event_coord: coord, score, ...extra });
   const restricted = (d: string, score: number, idx = 0) => ({
@@ -332,7 +332,7 @@ describe('runSearchPassages license tiers', () => {
     expect(m1).toEqual({
       naddr: nip19.naddrEncode({ kind: 30142, pubkey: pk, identifier: 'r1', relays: [RELAY] }),
       title: 'Titel r1',
-      license: { id: ARR, label: 'unknown' },
+      license: { id: ARR, label: 'Alle Rechte vorbehalten' },
       accessLevel: 'metadata-only',
       creator: ['Ada'],
       publisher: ['Verlag X'],
@@ -394,7 +394,7 @@ describe('search_passages description', () => {
 
   it('describes the two-tier model and names no ceiling under any', () => {
     const text = description();
-    expect(text).toContain('Passages come from Creative Commons and Public Domain learning resources');
+    expect(text).toContain('Passages come from learning resources under Creative Commons, Public Domain and free software/documentation licenses');
     expect(text).toContain('metadataOnlyMatches');
     expect(text).toContain('(normally no metadataOnlyMatches)');
     expect(text).toContain('Cite the license and the creator/publisher with every learning-resource passage.');

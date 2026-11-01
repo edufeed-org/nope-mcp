@@ -1,4 +1,4 @@
-import type { LicenseFilter } from './license/classify.js';
+import { LICENSE_TEXT, type LicenseFilter } from './license/classify.js';
 
 export const SERVER_NAME = 'nope-mcp';
 export const SERVER_VERSION = '0.7.1';
@@ -16,13 +16,13 @@ function openLicenseSentence(licenseFilterMax: LicenseFilter): string {
       : '';
   return (
     ` Every learning resource carries license ({id, label}, or null when unlicensed) and ` +
-    `accessLevel ("full" for Creative Commons and Public Domain licenses, "metadata-only" ` +
+    `accessLevel ("full" for ${LICENSE_TEXT.full}; "metadata-only" ` +
     `otherwise); only accessLevel:"full" resources have indexed fulltext, snippets and ` +
     `passages. Present a "metadata-only" resource by its title, description, license and ` +
     `link — never quoted beyond its metadata — and always name the license and the ` +
     `creator/publisher. licenseFilter narrows search_resources, search_content and ` +
-    `search_passages to "open" (CC0, Public Domain, CC BY, CC BY-SA), "cc-any" (all Creative ` +
-    `Commons licenses and Public Domain) or "any" (default: every resource, including ` +
+    `search_passages to "open" (${LICENSE_TEXT.open}), "cc-any" (${LICENSE_TEXT.ccAny}) ` +
+    `or "any" (default: every resource, including ` +
     `unlicensed and all-rights-reserved); articles, wikis, publications, projects, measures ` +
     `and calendar events carry no license filter and are returned regardless of license.${ceiling}`
   );

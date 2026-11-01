@@ -3,8 +3,8 @@ import { eventLicense, type LicenseFilter } from '../license/classify.js';
 
 /** Which licenses a non-`any` filter admits, for the zero-match hint. */
 export const LICENSE_FILTER_SCOPE: Record<Exclude<LicenseFilter, 'any'>, string> = {
-  open: 'CC0, Public Domain, CC BY, CC BY-SA',
-  'cc-any': 'Creative Commons or Public Domain',
+  open: 'CC0, Public Domain, CC BY, CC BY-SA (or DINI-AG-KIM equivalent) or free software/documentation',
+  'cc-any': 'Creative Commons, Public Domain or free software/documentation',
 };
 
 /** Summarizes license labels across a set of events, e.g. "10 CC BY-NC-SA 4.0". */

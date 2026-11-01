@@ -55,4 +55,10 @@ export interface AMBResourceWithMetadata {
     dTag: string;
     sig: string;
   };
+  /**
+   * ALL license values of the event (licenseTagValues: every `license:id`,
+   * else the plain `license` tag), classified together by
+   * toSimplifiedResource. Absent → falls back to `resource.license.id`.
+   */
+  licenseValues?: string[];
 }

@@ -10,7 +10,7 @@ import { parseSnippets, attachSnippets, SNIPPET_KIND } from '../content/snippet.
 import type { SimplifiedContentResult, ResourceResult } from '../content/types.js';
 import { READ_ONLY } from './annotations.js';
 import {
-  clampLicenseFilter, eventLicense, matchesLicenseFilter, type LicenseFilter,
+  LICENSE_TEXT, clampLicenseFilter, eventLicense, matchesLicenseFilter, type LicenseFilter,
 } from '../license/classify.js';
 import { licenseOnlyZeroHint } from './licenseHint.js';
 
@@ -143,12 +143,12 @@ export function registerSearchContentTool(
         'answer the user, not just list links. ' +
         'Every learning resource is returned by default, whatever its license; each resource ' +
         'result carries license ({id, label}, or null when unlicensed) and accessLevel ' +
-        '("full" for Creative Commons and Public Domain, "metadata-only" otherwise). Snippets ' +
+        `("full" for ${LICENSE_TEXT.full}; "metadata-only" otherwise). Snippets ` +
         'and passages exist only for accessLevel:"full" resources — present a "metadata-only" ' +
         'resource by its title, description, license and link, never quoted beyond its ' +
         'metadata, and always name the license and the creator/publisher. licenseFilter ' +
-        'narrows the results: "open" = CC0, Public Domain, CC BY, CC BY-SA; "cc-any" = all ' +
-        'Creative Commons licenses and Public Domain; "any" = also unlicensed and ' +
+        `narrows the results: "open" = ${LICENSE_TEXT.open}; "cc-any" = ${LICENSE_TEXT.ccAny}; ` +
+        '"any" = also unlicensed and ' +
         'all-rights-reserved resources. The other content types carry no license and are ' +
         'always included. ' +
         (licenseFilterMax !== 'any'
@@ -208,8 +208,8 @@ export function registerSearchContentTool(
           .enum(['open', 'cc-any', 'any'])
           .optional()
           .describe(
-            'Restrict educational-resource results by license: "open" (CC0, Public Domain, ' +
-              'CC BY, CC BY-SA), "cc-any" (all Creative Commons and Public Domain) or "any" ' +
+            `Restrict educational-resource results by license: "open" (${LICENSE_TEXT.open}), ` +
+              `"cc-any" (${LICENSE_TEXT.ccAny}) or "any" ` +
               "(every resource, including unlicensed and all-rights-reserved). Default: the " +
               "server's ceiling (normally any). Other content types are never license-filtered."
           ),

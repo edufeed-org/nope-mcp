@@ -3,12 +3,12 @@ import { runResourceSearch } from '../../src/tools/search.js';
 import { FOLLOWUP_PROBE_TIMEOUT_MS } from '../../src/relay/client.js';
 import type { NostrEvent } from 'nostr-tools';
 
-function resourceEvent(id: string, publisher?: string, license?: string): NostrEvent {
+function resourceEvent(id: string, publisher?: string, license?: string | string[]): NostrEvent {
   const tags: string[][] = [
     ['d', `d-${id}`],
     ['name', `Resource ${id}`],
   ];
-  if (license) tags.push(['license:id', license]);
+  for (const l of license === undefined ? [] : [license].flat()) tags.push(['license:id', l]);
   if (publisher) {
     tags.push(['publisher:name', publisher], ['publisher:type', 'Organization']);
   }
@@ -123,7 +123,7 @@ describe('runResourceSearch with licenseFilter open', () => {
     expect(out.total).toBe(0);
     expect(out.actorCandidates).toBeUndefined();
     expect(out.hint).toContain(
-      " Only resources under CC0, Public Domain, CC BY, CC BY-SA licenses were searched (licenseFilter: open); " +
+      " Only resources under CC0, Public Domain, CC BY, CC BY-SA (or DINI-AG-KIM equivalent) or free software/documentation licenses were searched (licenseFilter: open); " +
         'resources under other licenses or without a license are left out.'
     );
   });
@@ -132,7 +132,7 @@ describe('runResourceSearch with licenseFilter open', () => {
     const client = fakeClient([]);
     const out = await runResourceSearch(client, { publisherName: 'Lehreladen', licenseFilter: 'cc-any' });
     expect(out.hint).toContain(
-      ' Only resources under Creative Commons or Public Domain licenses were searched (licenseFilter: cc-any);'
+      ' Only resources under Creative Commons, Public Domain or free software/documentation licenses were searched (licenseFilter: cc-any);'
     );
   });
 
@@ -147,6 +147,48 @@ describe('runResourceSearch with licenseFilter open', () => {
     const out = await runResourceSearch(client, { query: 'mathe', licenseFilter: 'any' });
     expect(client.searches).toEqual(['mathe']);
     expect(out.total).toBe(2);
+  });
+});
+
+describe('runResourceSearch with multi-tag KIM licenses (relay prefilter + client post-filter)', () => {
+  const KIM = (t: string) => `https://w3id.org/kim/license/${t}`;
+  // The relay indexes one license.id per event, so both events below can pass
+  // the open prefilter on "attribution"; the multi-tag post-filter decides.
+  const events = () => [
+    resourceEvent('by-sa', 'LEHRE LADEN', [KIM('attribution'), KIM('shareAlike')]),
+    resourceEvent('by-nc', 'LEHRE LADEN', [KIM('attribution'), KIM('nonCommercial')]),
+    resourceEvent('gpl', 'LEHRE LADEN', 'https://www.gnu.org/licenses/gpl-3.0'),
+    resourceEvent('arr', 'LEHRE LADEN', 'https://de.wikipedia.org/wiki/Urheberrecht_(Deutschland)'),
+  ];
+
+  it('open: prefilters on the KIM/free-licence spellings, then drops the BY-NC (KIM) event', async () => {
+    const client = fakeClient(events());
+    const out = await runResourceSearch(client, { publisherName: 'LEHRE LADEN', licenseFilter: 'open' });
+    expect(client.searches[0]).toContain(`license.id:${KIM('attribution')}`);
+    expect(client.searches[0]).toContain(`license.id:${KIM('shareAlike')}`);
+    expect(client.searches[0]).toContain('license.id:https://www.gnu.org/licenses/gpl-3.0');
+    expect(client.searches[0]).not.toContain(`license.id:${KIM('nonCommercial')}`);
+    expect(out.resources.map((r) => r.id)).toEqual(['d-by-sa', 'd-gpl']);
+    expect(out.resources.map((r) => r.license)).toEqual([
+      { id: KIM('attribution'), label: 'BY-SA (KIM)' },
+      { id: 'https://www.gnu.org/licenses/gpl-3.0', label: 'GPL-3.0' },
+    ]);
+    expect(out.resources.every((r) => r.accessLevel === 'full')).toBe(true);
+  });
+
+  it('cc-any: keeps the BY-NC (KIM) event, still drops all-rights-reserved', async () => {
+    const client = fakeClient(events());
+    const out = await runResourceSearch(client, { publisherName: 'LEHRE LADEN', licenseFilter: 'cc-any' });
+    expect(client.searches[0]).toContain(`license.id:${KIM('nonCommercial')}`);
+    expect(out.resources.map((r) => r.id)).toEqual(['d-by-sa', 'd-by-nc', 'd-gpl']);
+    expect(out.resources[1].license).toEqual({ id: KIM('attribution'), label: 'BY-NC (KIM)' });
+  });
+
+  it('free text: the post-filter alone applies the multi-tag classification', async () => {
+    const client = fakeClient(events());
+    const out = await runResourceSearch(client, { query: 'mathe', licenseFilter: 'open' });
+    expect(client.searches).toEqual(['mathe']);
+    expect(out.resources.map((r) => r.id)).toEqual(['d-by-sa', 'd-gpl']);
   });
 });
 

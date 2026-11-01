@@ -2,8 +2,8 @@ import { nip19, type NostrEvent } from 'nostr-tools';
 import type { AmbLearningResourceBase, LocalizedString } from 'amb-nostr-converter';
 import type { AMBResourceWithMetadata } from '../types/amb.js';
 import { getLabel } from '../skos/parser.js';
-import { classifyLicense, accessLevelFor, type AccessLevel, type LicenseInfo } from '../license/classify.js';
-import { licenseTagValue } from '../license/tag.js';
+import { classifyLicenses, accessLevelFor, type AccessLevel, type LicenseInfo } from '../license/classify.js';
+import { licenseTagValue, licenseTagValues } from '../license/tag.js';
 
 /**
  * Base URL of the edufeed-app frontend. When set, `toSimplifiedResource`
@@ -172,6 +172,7 @@ export function eventToAMBResource(event: NostrEvent): AMBResourceWithMetadata |
 
     return {
       resource,
+      licenseValues: licenseTagValues(event),
       nostr: {
         eventId: event.id,
         kind: event.kind,
@@ -222,7 +223,10 @@ export function toSimplifiedResource(ambResource: AMBResourceWithMetadata, langu
     resource.mainEntityOfPage?.find((m) => /^https?:\/\//.test(m.id))?.id ??
     (/^https?:\/\//.test(resource.id) ? resource.id : undefined);
 
-  const { group: licenseGroup, license } = classifyLicense(resource.license?.id);
+  // Every license:id together (KIM [attribution, shareAlike] → BY-SA).
+  const { group: licenseGroup, license } = classifyLicenses(
+    ambResource.licenseValues ?? [resource.license?.id]
+  );
 
   return {
     id: resource.id,
@@ -248,7 +252,7 @@ export function toSimplifiedResource(ambResource: AMBResourceWithMetadata, langu
     creator: resource.creator?.map(c => ({ name: c.name, type: c.type })),
     publisher: resource.publisher?.map(p => ({ name: p.name, type: p.type })),
 
-    // Access — license tier from the event's license:id (see license/classify.ts)
+    // Access — license tier from the event's license:id tags (see license/classify.ts)
     license,
     accessLevel: accessLevelFor(licenseGroup),
     isAccessibleForFree: resource.isAccessibleForFree,
