@@ -37,6 +37,11 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ### Fixed
 
+- Attribute read rules now match edufeed-app's `calendar-attributes.js`
+  exactly: the first VALID tag of a name wins (an invalid one no longer
+  shadows a later valid one), the attendance mode is trimmed and read by
+  its last path segment, an empty `educationalLevel:id` is skipped, and an
+  empty `title` falls back to the deprecated `name`.
 - Geohash queries dropped most results: the client re-applied `#g` locally
   as an exact match while the relay answers it as a prefix, so only events
   whose geohash equalled the queried prefix survived. `#g` is now relay-only.
