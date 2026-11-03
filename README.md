@@ -542,7 +542,7 @@ edufeed educational attributes.
 Parameters:
 | Name | Type | Description |
 |------|------|-------------|
-| `query` | string | Free-text topic. **Caveat:** when combined with a geohash the relay location index ignores this field — for "events about X near a place" pass the geohash and filter returned events by topic client-side. Topic + time range is one server-side query. |
+| `query` | string | Free-text topic. Topic + time range is one server-side query. Topic + geohash is served too: the relay runs the topic search and post-filters one page of 250 hits by location, so results may be fewer than `limit`. |
 | `startAfter` / `startBefore` | number | Inclusive Unix timestamp bounds for event start |
 | `endAfter` / `endBefore` | number | Bounds on the event's *effective* end (see below). `endAfter` is strict, since NIP-52 `end` is exclusive: "ongoing or upcoming" is `endAfter: now`. `endBefore` is inclusive. |
 | `geohash` | string | Geohash prefix for location-based search |

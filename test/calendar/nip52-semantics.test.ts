@@ -111,7 +111,7 @@ describe('educational attributes (NIP-52-Edufeed)', () => {
     expect(r.communities).toBeUndefined();
   });
 
-  it('applies the wiki read rules: first tag wins, literal booleans, numeric price, tolerant mode', () => {
+  it('applies the app read rules: first VALID tag wins, literal booleans, numeric price, tolerant mode', () => {
     const r = eventToCalendarEvent(
       ev(31923, [
         ['start', '1718600000'],
@@ -123,6 +123,7 @@ describe('educational attributes (NIP-52-Edufeed)', () => {
       ]),
     )!;
     expect(r.attributes).toEqual({
+      registrationRequired: true,
       price: { amount: 12.5, currency: 'EUR', free: false },
       attendanceMode: 'mixed',
       attendanceModeUri: 'https://schema.org/MixedEventAttendanceMode',

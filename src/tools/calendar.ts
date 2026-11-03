@@ -51,10 +51,9 @@ export function registerCalendarTools(
           .describe(
             'Free-text topic for the events. Combines with a time range ' +
               '(startAfter/startBefore/endAfter/endBefore) in a single server-side ' +
-              'query — e.g. "events about X in the next week" is one call. ' +
-              'EXCEPTION: a geohash query forces the relay location index, which ' +
-              'ignores this topic; for "events about X near a place" pass the geohash ' +
-              'and filter the returned events by topic on the client.'
+              'query — e.g. "events about X in the next week" is one call. With a ' +
+              'geohash, the relay runs the topic search and filters one page of 250 hits ' +
+              'by location, so "events about X near a place" works but may return fewer than limit.'
           ),
         startAfter: z
           .number()
@@ -95,9 +94,8 @@ export function registerCalendarTools(
             'Return calendar events shared into this community (Communikey). Accepts a hex pubkey ' +
               'or npub; resolve a community name with resolve_author. Combines with a time range ' +
               '(startAfter/startBefore/endAfter/endBefore) in a single server-side query, so ' +
-              '"events shared with X next week" is one call. EXCEPTION: a geohash query forces the ' +
-              'relay location index, which ignores this community filter; for "shared with X near a ' +
-              'place" pass the geohash and filter the returned events by community client-side.',
+              '"events shared with X next week" is one call. With a geohash the relay applies the ' +
+              'community filter in its topic search and post-filters one page of 250 hits by location.',
           ),
         free: z
           .boolean()

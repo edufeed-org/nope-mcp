@@ -139,11 +139,18 @@ const ATTENDANCE_MODES: Record<string, AttendanceMode> = {
   MixedEventAttendanceMode: 'mixed',
 };
 
-/** Wiki read rule: tolerate http:// and a bare term; canonical form is the https://schema.org URI. */
-function readAttendanceMode(value: string): { attendanceMode?: AttendanceMode; attendanceModeUri: string } {
-  const term = value.replace(/^https?:\/\/schema\.org\//, '');
+/**
+ * Read rule shared with edufeed-app (calendar-attributes.js parseAttendanceMode):
+ * trim, take the last path segment of whatever URI form was written, and
+ * canonicalise a known term to the https://schema.org URI. Unknown values are
+ * kept verbatim (trimmed) without a mode.
+ */
+function readAttendanceMode(value: string): { attendanceMode?: AttendanceMode; attendanceModeUri: string } | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const term = trimmed.split('/').pop() ?? trimmed;
   const mode = ATTENDANCE_MODES[term];
-  return mode ? { attendanceMode: mode, attendanceModeUri: `https://schema.org/${term}` } : { attendanceModeUri: value };
+  return mode ? { attendanceMode: mode, attendanceModeUri: `https://schema.org/${term}` } : { attendanceModeUri: trimmed };
 }
 
 /**
@@ -162,15 +169,14 @@ function readPrice(tag: string[]): CalendarEventAttributes['price'] | undefined 
 }
 
 /**
- * Read the educational attributes off the tags with the wiki's rules: the
- * first tag of each name wins (even when invalid), `registrationRequired`
- * only counts literal true/false, concept triples are read in tag order with
- * German labels preferred and the URI tail as fallback.
+ * Read the educational attributes off the tags exactly as edufeed-app's
+ * calendar-attributes.js does: the first VALID tag of each name wins (an
+ * invalid one is skipped, not shadowing), `registrationRequired` only counts
+ * literal true/false, concept triples are read in tag order with German
+ * labels preferred and the URI tail as fallback.
  */
 function readAttributes(event: NostrEvent): CalendarEventAttributes | undefined {
   const attrs: CalendarEventAttributes = {};
-  let registrationSeen = false;
-  let priceSeen = false;
   const levels: { id: string; label?: string; anyLabel?: string }[] = [];
   const levelIds = new Set<string>();
 
@@ -178,22 +184,24 @@ function readAttributes(event: NostrEvent): CalendarEventAttributes | undefined 
     if (tag.length < 2) continue;
     switch (tag[0]) {
       case 'registrationRequired':
-        if (!registrationSeen) {
-          registrationSeen = true;
-          if (tag[1] === 'true' || tag[1] === 'false') attrs.registrationRequired = tag[1] === 'true';
+        if (attrs.registrationRequired === undefined && (tag[1] === 'true' || tag[1] === 'false')) {
+          attrs.registrationRequired = tag[1] === 'true';
         }
         break;
       case 'price':
-        if (!priceSeen) {
-          priceSeen = true;
+        if (!attrs.price) {
           const price = readPrice(tag);
           if (price) attrs.price = price;
         }
         break;
       case 'eventAttendanceMode':
-        if (!attrs.attendanceModeUri && tag[1]) Object.assign(attrs, readAttendanceMode(tag[1]));
+        if (!attrs.attendanceMode) {
+          const mode = readAttendanceMode(tag[1]);
+          if (mode) Object.assign(attrs, mode);
+        }
         break;
       case 'educationalLevel:id':
+        if (!tag[1]) break;
         if (!levelIds.has(tag[1])) {
           levelIds.add(tag[1]);
           levels.push({ id: tag[1] });
@@ -241,8 +249,11 @@ function getTagValues(event: NostrEvent, name: string): string[] {
  * Returns null if the event is missing required fields (d, title/name, start).
  */
 export function eventToCalendarEvent(event: NostrEvent): CalendarEvent | null {
+  if (event.kind !== 31922 && event.kind !== 31923) return null;
   const identifier = getTagValue(event, 'd');
-  const title = getTagValue(event, 'title') ?? getTagValue(event, 'name');
+  // Deprecated `name` is the fallback for a missing OR empty title (the relay
+  // accepts either being non-empty).
+  const title = getTagValue(event, 'title') || getTagValue(event, 'name');
   const start = getTagValue(event, 'start');
 
   if (!identifier || !title || !start) {
