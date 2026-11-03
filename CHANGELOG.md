@@ -23,6 +23,14 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 - Every calendar event carries `author` `{pubkey, name, bot}` from the
   relay's kind-0 index (NIP-24 `bot` marks mirrors and crawlers), cached per
   author for 10 minutes.
+- `search_calendar_events` covers all four NIP-52 kinds: `kinds: [31924]`
+  returns calendars (`calendars`: title, description, `eventRefs`) and
+  `kinds: [31925]` RSVPs (`rsvps`: status, `freeBusy` — dropped when
+  declined, `eventRef`, `eventId`, `eventAuthor`, note); an RSVP without a
+  valid status is ignored. New `references` (`#a`) and `participants`
+  (`#p`) filters answer "who RSVP'd to event X", "which calendars list X"
+  and "events naming participant Y". Events expose `calendarRefs`, the
+  kind-31924 calendars they ask to be included in.
 - `CALENDAR_HIDDEN_PUBKEYS` (hex, npub or kind-30000 naddr entries, as in
   edufeed-app) hides bulk calendar sources from `search_calendar_events` by
   default; the response reports `hiddenSources` and `includeHiddenSources:

@@ -42,6 +42,10 @@ export interface CalendarSearchParams {
   attendanceMode?: 'online' | 'offline' | 'mixed';
   /** Only events for this KIM Bildungsstufe concept URI (`#educationalLevel:id`). */
   educationalLevel?: string;
+  /** `#a` — referenced coordinates: the event an RSVP answers, a calendar's events, an event's calendar request. */
+  references?: string[];
+  /** `#p` — participant / event-author pubkeys (hex). */
+  participants?: string[];
 }
 
 const ATTENDANCE_MODE_URI: Record<NonNullable<CalendarSearchParams['attendanceMode']>, string> = {
@@ -95,6 +99,12 @@ export function buildCalendarFilter(params: CalendarSearchParams): Filter {
   }
   if (params.hashtags?.length) {
     filter['#t'] = params.hashtags;
+  }
+  if (params.references?.length) {
+    filter['#a'] = params.references;
+  }
+  if (params.participants?.length) {
+    filter['#p'] = params.participants;
   }
 
   // NIP-52-Edufeed attribute facets (nope-relay calendar collection). An

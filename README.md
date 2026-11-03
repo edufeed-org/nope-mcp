@@ -554,7 +554,9 @@ Parameters:
 | `attendanceMode` | `online` \| `offline` \| `mixed` | Only online / in-person / hybrid events |
 | `educationalLevel` | string | KIM Bildungsstufe concept URI (`https://w3id.org/kim/educationalLevel/level_C` = Fortbildung) |
 | `includeHiddenSources` | boolean | Also return events from operator-hidden bulk sources (`CALENDAR_HIDDEN_PUBKEYS`); default `false` |
-| `kinds` | number[] | Event kinds to query (default: `[31922, 31923]`) |
+| `references` | string[] | `#a` coordinates: with `kinds: [31925]` the event an RSVP answers, with `[31924]` calendars listing an event, with event kinds the calendar an event asks to join |
+| `participants` | string[] | `#p` pubkeys (hex): events naming them as participants, or RSVPs to their events |
+| `kinds` | number[] | NIP-52 kinds (default: `[31922, 31923]`). `31924` calendars come back in `calendars` (`title`, `eventRefs`), `31925` RSVPs in `rsvps` (`status`, `freeBusy`, `eventRef`, `eventId`, `eventAuthor`); an RSVP without a valid status is dropped, as the spec requires |
 | `since` / `until` | number | Unix timestamp bounds on event creation time |
 | `limit` | number | Max results, 1-250 (default 20) |
 
@@ -574,7 +576,8 @@ holds `registrationRequired`, `price` (`{amount, currency, free}`),
 `attendanceMode` (`online`/`offline`/`mixed`) and `educationalLevel`
 (`[{id, label}]`). A missing field means "no statement" — never "no" or "not
 free". Named speakers without a key are in `namedParticipants`, targeted
-communities in `communities`.
+communities in `communities`, and the kind-31924 calendars an event asks to be
+included in (NIP-52 collaborative requests) in `calendarRefs`.
 
 **Authors and hidden sources.** Every event carries `author` `{pubkey, name,
 bot}` from the relay's kind-0 index; `bot: true` is the NIP-24 flag for

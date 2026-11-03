@@ -70,6 +70,8 @@ export interface CalendarEvent {
   namedParticipants?: NamedParticipant[];
   /** Communities the author targeted (`h` tags, Communikey pubkeys). */
   communities?: string[];
+  /** Kind-31924 calendar coordinates this event asks to be included in (`a` tags, NIP-52). */
+  calendarRefs?: string[];
   /** Educational attributes; absent when the event carries none. */
   attributes?: CalendarEventAttributes;
   /** Author profile info (name, NIP-24 bot flag); attached by the tool layer. */
@@ -310,9 +312,96 @@ export function eventToCalendarEvent(event: NostrEvent): CalendarEvent | null {
   const communities = getTagValues(event, 'h').filter(Boolean);
   if (communities.length > 0) result.communities = communities;
 
+  const calendarRefs = getTagValues(event, 'a').filter((a) => a.startsWith('31924:'));
+  if (calendarRefs.length > 0) result.calendarRefs = calendarRefs;
+
   const attributes = readAttributes(event);
   if (attributes) result.attributes = attributes;
 
+  return result;
+}
+
+/** A NIP-52 calendar (kind 31924): a titled collection of event coordinates. */
+export interface CalendarCollection {
+  kind: 31924;
+  identifier: string;
+  title: string;
+  description?: string;
+  /** Coordinates (`31922|31923:<pubkey>:<d>`) of the events in this calendar, in tag order. */
+  eventRefs: string[];
+  naddr?: string;
+  url?: string;
+  nostr: { eventId: string; pubkey: string; createdAt: number };
+}
+
+export function eventToCalendarCollection(event: NostrEvent): CalendarCollection | null {
+  if (event.kind !== 31924) return null;
+  const identifier = getTagValue(event, 'd');
+  const title = getTagValue(event, 'title');
+  if (!identifier || !title) return null;
+  const result: CalendarCollection = {
+    kind: 31924,
+    identifier,
+    title,
+    eventRefs: getTagValues(event, 'a').filter((a) => /^3192[23]:/.test(a)),
+    nostr: { eventId: event.id, pubkey: event.pubkey, createdAt: event.created_at },
+  };
+  if (event.content) result.description = event.content;
+  const { naddr, url } = encodeNaddrAndUrl(event.kind, event.pubkey, identifier);
+  if (naddr) result.naddr = naddr;
+  if (url) result.url = url;
+  return result;
+}
+
+export type RsvpStatus = 'accepted' | 'declined' | 'tentative';
+
+/** A NIP-52 RSVP (kind 31925): one user's attendance intention for one event. */
+export interface CalendarRsvp {
+  kind: 31925;
+  identifier: string;
+  status: RsvpStatus;
+  /** `free`/`busy` for the event's duration; absent when declined (spec) or not stated. */
+  freeBusy?: 'free' | 'busy';
+  /** Coordinate of the event being answered. */
+  eventRef: string;
+  /** Id of the specific event revision answered, when the RSVP pins one. */
+  eventId?: string;
+  /** Pubkey of the event's author, when tagged. */
+  eventAuthor?: string;
+  note?: string;
+  naddr?: string;
+  nostr: { eventId: string; pubkey: string; createdAt: number };
+}
+
+/**
+ * Returns null for anything but a well-formed RSVP: NIP-52 requires `a` and
+ * a `status` of accepted/declined/tentative, and the edufeed wiki says an
+ * RSVP without a valid status must be ignored.
+ */
+export function eventToRsvp(event: NostrEvent): CalendarRsvp | null {
+  if (event.kind !== 31925) return null;
+  const identifier = getTagValue(event, 'd');
+  const eventRef = getTagValue(event, 'a');
+  const status = getTagValue(event, 'status');
+  if (!identifier || !eventRef || (status !== 'accepted' && status !== 'declined' && status !== 'tentative')) {
+    return null;
+  }
+  const result: CalendarRsvp = {
+    kind: 31925,
+    identifier,
+    status,
+    eventRef,
+    nostr: { eventId: event.id, pubkey: event.pubkey, createdAt: event.created_at },
+  };
+  const fb = getTagValue(event, 'fb');
+  if (status !== 'declined' && (fb === 'free' || fb === 'busy')) result.freeBusy = fb;
+  const eventId = getTagValue(event, 'e');
+  if (eventId) result.eventId = eventId;
+  const eventAuthor = getTagValue(event, 'p');
+  if (eventAuthor) result.eventAuthor = eventAuthor;
+  if (event.content) result.note = event.content;
+  const { naddr } = encodeNaddrAndUrl(event.kind, event.pubkey, identifier);
+  if (naddr) result.naddr = naddr;
   return result;
 }
 
