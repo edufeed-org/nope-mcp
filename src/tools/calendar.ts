@@ -3,9 +3,14 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AMBRelayClient } from '../relay/client.js';
 import { buildCalendarFilter } from '../calendar/filters.js';
 import { eventsToCalendarEvents } from '../calendar/transform.js';
+import { CalendarAuthorCache } from '../calendar/authorInfo.js';
+import { getHiddenCalendarSources, partitionHiddenCalendarSources } from '../calendar/hiddenSources.js';
 import { getCalendarAuthorDirectory } from '../authors.js';
 import { newRelayDiagnostics, relayDiagnosticsFields } from './relaySelection.js';
 import { READ_ONLY } from './annotations.js';
+
+/** Relay page size; the over-fetch ceiling when hidden sources are dropped client-side. */
+const RELAY_MAX_LIMIT = 250;
 
 /**
  * Register calendar event tools with the MCP server
@@ -14,14 +19,31 @@ export function registerCalendarTools(
   server: McpServer,
   calendarClient: AMBRelayClient
 ): void {
+  // Author names + NIP-24 bot flags come from the calendar relay's kind-0
+  // index (nope-relay PROFILES_ENABLED); one lookup per author per cache
+  // lifetime, misses included.
+  const authorCache = new CalendarAuthorCache((pubkeys) =>
+    calendarClient.queryEvents({ kinds: [0], authors: pubkeys, limit: pubkeys.length }),
+  );
+
   server.registerTool(
     'search_calendar_events',
     {
       title: 'Search Calendar Events',
       description:
         'Search for NIP-52 calendar events (date-based and time-based). ' +
-        'Supports temporal filters (start/end time ranges), geohash location filtering, and hashtag filtering. ' +
+        'Supports temporal filters (start/end time ranges), geohash location filtering, hashtag filtering, ' +
+        'and the edufeed educational attributes (free, registrationRequired, attendanceMode, educationalLevel). ' +
         'Returns events from the configured calendar relay. ' +
+        'TIME SEMANTICS (NIP-52): `start`/`end` are the raw tags — `end` is EXCLUSIVE and is omitted for ' +
+        'one-day and instantaneous events, so never read a missing `end` as "unknown". Use `effectiveEnd` ' +
+        '(Unix seconds when the event is over), `allDay` (31922: whole days, no clock time) and `lastDay` ' +
+        '(all-day events: the inclusive last calendar day). Times of 31923 events are in `startTzid`/`endTzid`. ' +
+        'ATTRIBUTES: `attributes` carries registration, price (free = amount 0), attendance mode ' +
+        '(online/offline/mixed) and Bildungsstufe; a missing field means "no statement", never "no" or "not free". ' +
+        'AUTHOR: every event has `author` {name, bot}; `bot: true` marks an automated account such as an event ' +
+        'mirror or crawler — group or de-emphasise those unless the user asks for imports. Operators may hide ' +
+        'bulk sources by default (see `hiddenSources` in the result); pass includeHiddenSources: true to see them. ' +
         'When presenting an event to the user, render it as a markdown link: prefer the ' +
         'event `url` (the edufeed-app viewer at <base>/<naddr>, which shows fuller details) ' +
         'over `sourcePage` (the original external event page). Never construct an naddr or ' +
@@ -85,6 +107,35 @@ export function registerCalendarTools(
               'relay location index, which ignores this community filter; for "shared with X near a ' +
               'place" pass the geohash and filter the returned events by community client-side.',
           ),
+        free: z
+          .boolean()
+          .optional()
+          .describe(
+            'true: only events tagged free of charge (price 0). Events without a price statement are NOT ' +
+              'returned, so leave it unset unless the user insists on free. false adds no filter.'
+          ),
+        registrationRequired: z
+          .boolean()
+          .optional()
+          .describe('Only events that do (true) or do not (false) require registration; untagged events match neither.'),
+        attendanceMode: z
+          .enum(['online', 'offline', 'mixed'])
+          .optional()
+          .describe('Only online, in-person (offline) or hybrid (mixed) events; untagged events match none.'),
+        educationalLevel: z
+          .string()
+          .optional()
+          .describe(
+            'Only events for this KIM Bildungsstufe concept URI, e.g. https://w3id.org/kim/educationalLevel/level_C ' +
+              '(Fortbildung), level_A (Hochschule), level_B (Vorbereitungsdienst), level_1 (Primarbereich).'
+          ),
+        includeHiddenSources: z
+          .boolean()
+          .optional()
+          .describe(
+            'Also return events from operator-hidden bulk sources (event mirrors, imported catalogues). ' +
+              'Default false; the result reports how many were hidden.'
+          ),
         kinds: z
           .array(z.number())
           .optional()
@@ -110,6 +161,11 @@ export function registerCalendarTools(
       annotations: READ_ONLY,
     },
     async (params) => {
+      const hidden = getHiddenCalendarSources();
+      // Hidden sources are dropped client-side (a Nostr filter cannot
+      // exclude authors), so over-fetch to the relay page size and cut back
+      // to the requested limit afterwards.
+      const dropHidden = hidden.size > 0 && !params.includeHiddenSources;
       const filter = buildCalendarFilter({
         query: params.query,
         startAfter: params.startAfter,
@@ -120,15 +176,30 @@ export function registerCalendarTools(
         hashtags: params.hashtags,
         authors: params.authors,
         community: params.community,
+        free: params.free,
+        registrationRequired: params.registrationRequired,
+        attendanceMode: params.attendanceMode,
+        educationalLevel: params.educationalLevel,
         kinds: params.kinds,
         since: params.since,
         until: params.until,
-        limit: params.limit,
+        limit: dropHidden ? RELAY_MAX_LIMIT : params.limit,
       });
 
       const diag = newRelayDiagnostics();
       const events = await calendarClient.queryEvents(filter, undefined, { diag });
-      const calendarEvents = eventsToCalendarEvents(events);
+      const partition = partitionHiddenCalendarSources(eventsToCalendarEvents(events), hidden, {
+        showHidden: !dropHidden,
+      });
+      const calendarEvents = dropHidden ? partition.shown.slice(0, params.limit) : partition.shown;
+
+      const directory = getCalendarAuthorDirectory();
+      const authors = await authorCache.lookup(calendarEvents.map((e) => e.nostr.pubkey));
+      for (const event of calendarEvents) {
+        const info = authors.get(event.nostr.pubkey) ?? { pubkey: event.nostr.pubkey, bot: false };
+        const fromDirectory = directory?.authors.find((a) => a.pubkey === event.nostr.pubkey)?.name;
+        event.author = info.name || !fromDirectory ? info : { ...info, name: fromDirectory };
+      }
 
       return {
         content: [
@@ -137,6 +208,17 @@ export function registerCalendarTools(
             text: JSON.stringify({
               total: calendarEvents.length,
               events: calendarEvents,
+              ...(hidden.size > 0
+                ? {
+                    hiddenSources: {
+                      hidden: partition.hidden,
+                      included: !dropHidden,
+                      note: dropHidden
+                        ? 'Events from operator-hidden bulk sources (event mirrors, imported catalogues) were left out; pass includeHiddenSources: true to see them.'
+                        : 'Events from operator-hidden bulk sources are included; their author.bot flag marks automated accounts.',
+                    },
+                  }
+                : {}),
               ...relayDiagnosticsFields(diag),
             }),
           },

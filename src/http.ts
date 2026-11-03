@@ -13,6 +13,7 @@ import {
   setAuthorDirectory,
   setCalendarAuthorDirectory,
 } from './authors.js';
+import { loadHiddenCalendarSources, setHiddenCalendarSources } from './calendar/hiddenSources.js';
 import { startHttpServer, SessionConfigError } from './transport/http.js';
 import { createJwtVerifier } from './transport/auth.js';
 import { buildSessionServer } from './session.js';
@@ -99,6 +100,7 @@ const CALENDAR_RELAYS =
   process.env.CALENDAR_RELAYS?.split(',').filter(Boolean) || ['wss://relay.edufeed.org'];
 const CALENDAR_AUTHOR_SETS =
   process.env.CALENDAR_AUTHOR_SETS?.split(',').filter(Boolean) || [];
+const CALENDAR_HIDDEN_PUBKEYS = process.env.CALENDAR_HIDDEN_PUBKEYS;
 const SPELL_RELAYS = process.env.SPELL_RELAYS?.split(',').filter(Boolean) || ['wss://relay.edufeed.org'];
 const indexer = IndexerClient.fromEnv(process.env.INDEXER_ENDPOINTS, process.env.INDEXER_API_TOKEN, process.env.INDEXER_API_TOKENS);
 const LICENSE_FILTER_MAX = parseLicenseFilterMax(process.env);
@@ -156,6 +158,17 @@ async function main() {
       );
     } catch (error) {
       console.error('Failed to load calendar author sets:', error);
+    }
+  }
+
+  // Hidden bulk calendar sources (event mirrors), dropped from results by default
+  if (CALENDAR_HIDDEN_PUBKEYS) {
+    try {
+      const hidden = await loadHiddenCalendarSources(CALENDAR_HIDDEN_PUBKEYS, CALENDAR_RELAYS);
+      setHiddenCalendarSources(hidden);
+      console.log(`Hiding ${hidden.size} bulk calendar source(s) by default (CALENDAR_HIDDEN_PUBKEYS)`);
+    } catch (error) {
+      console.error('Failed to load hidden calendar sources:', error);
     }
   }
 

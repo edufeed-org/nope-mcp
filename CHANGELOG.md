@@ -6,6 +6,28 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ## [Unreleased]
 
+### Added
+
+- `search_calendar_events` returns NIP-52 time semantics the model no longer
+  has to know: `effectiveEnd` (Unix seconds when the event is over — an
+  end-less 31923 ends at its start, an end-less 31922 is a one-day event,
+  an `end` at or before `start` counts as missing), `allDay`, `lastDay` (the
+  inclusive last day of an all-day event), and `endTzid` inherited from
+  `startTzid`.
+- The edufeed educational attributes ("Calendar events in edufeed" wiki) are
+  exposed as `attributes` (`registrationRequired`, `price` with `free`,
+  `attendanceMode`, `educationalLevel` with labels), plus `namedParticipants`
+  (`participant` tags) and `communities` (`h` tags), and filterable with the
+  new `free`, `registrationRequired`, `attendanceMode` and `educationalLevel`
+  parameters (relay facets on nope-relay's calendar collection).
+- Every calendar event carries `author` `{pubkey, name, bot}` from the
+  relay's kind-0 index (NIP-24 `bot` marks mirrors and crawlers), cached per
+  author for 10 minutes.
+- `CALENDAR_HIDDEN_PUBKEYS` (hex, npub or kind-30000 naddr entries, as in
+  edufeed-app) hides bulk calendar sources from `search_calendar_events` by
+  default; the response reports `hiddenSources` and `includeHiddenSources:
+  true` returns them. A `bot` flag alone hides nothing.
+
 ### Changed
 
 - License classification reads ALL `license:id` tags of a learning resource

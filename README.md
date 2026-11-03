@@ -76,6 +76,7 @@ cp .env.example .env
 | `AMB_AUTHOR_SETS` | all transports | _(empty)_ | Comma-separated `naddr` identifiers of NIP-51 follow sets (kind 30000). Loaded once at startup into the author directory served by `list_known_authors`; the returned pubkeys can then be passed to `search_*` tools as `authors`. |
 | `CALENDAR_RELAYS` | all transports | `wss://relay.edufeed.org` | Comma-separated NIP-52 calendar relay URLs for `search_calendar_events`. The AMB relay serves calendar events itself, so the default is the same relay; set this only for split deployments with a dedicated calendar relay. |
 | `CALENDAR_AUTHOR_SETS` | all transports | _(empty)_ | Same as `AMB_AUTHOR_SETS`, but for the calendar author directory served by `list_calendar_authors`. |
+| `CALENDAR_HIDDEN_PUBKEYS` | all transports | _(empty)_ | Bulk calendar sources (event mirrors, imported catalogues) hidden from `search_calendar_events` by default. Comma-separated hex pubkeys, npubs or `naddr`s of NIP-51 kind-30000 lists — the same entry forms as edufeed-app. Callers get them back with `includeHiddenSources: true`; the response reports how many were hidden. |
 | `INDEXER_ENDPOINTS` | `search_passages` | _(unset — tool disabled)_ | Comma-separated `wss://relay=https://indexer` pairs mapping each AMB relay to its amb-indexer base URL. Enables `search_passages`. |
 | `INDEXER_API_TOKEN` | `search_passages` | _(unset)_ | Bearer token for the indexer's `/search_chunks` (shared default for all endpoints). |
 | `INDEXER_API_TOKENS` | `search_passages` | _(unset)_ | Per-relay token overrides, comma-separated `wss://relay=token` pairs — each deployed indexer instance has its own token. Every `INDEXER_ENDPOINTS` entry must be covered by this or `INDEXER_API_TOKEN`; a partially tokened config fails at startup. |
@@ -535,17 +536,24 @@ Fetching is SSRF-aware (private/loopback ranges are blocked).
 ### search_calendar_events
 
 Search for NIP-52 calendar events (date-based 31922, time-based 31923). Supports
-temporal filters, geohash location filtering, and hashtag filtering.
+temporal filters, geohash location filtering, hashtag filtering, and the
+edufeed educational attributes.
 
 Parameters:
 | Name | Type | Description |
 |------|------|-------------|
-| `query` | string | Free-text topic. **Caveat:** when combined with time/geo range filters the relay prioritises the range server-side and ignores this field — for "events about X next week" pass the time range and filter returned events by topic client-side. |
+| `query` | string | Free-text topic. **Caveat:** when combined with a geohash the relay location index ignores this field — for "events about X near a place" pass the geohash and filter returned events by topic client-side. Topic + time range is one server-side query. |
 | `startAfter` / `startBefore` | number | Unix timestamp bounds for event start |
-| `endAfter` / `endBefore` | number | Unix timestamp bounds for event end |
+| `endAfter` / `endBefore` | number | Unix timestamp bounds for the event's *effective* end (see below) |
 | `geohash` | string | Geohash prefix for location-based search |
 | `hashtags` | string[] | Filter by hashtags |
 | `authors` | string[] | Author pubkeys (hex) |
+| `community` | string | Events shared into this Communikey community (hex or npub) |
+| `free` | boolean | `true`: only events tagged with price `0`. Untagged events do not match; `false` adds no filter. |
+| `registrationRequired` | boolean | Only events that do / do not require registration (untagged events match neither) |
+| `attendanceMode` | `online` \| `offline` \| `mixed` | Only online / in-person / hybrid events |
+| `educationalLevel` | string | KIM Bildungsstufe concept URI (`https://w3id.org/kim/educationalLevel/level_C` = Fortbildung) |
+| `includeHiddenSources` | boolean | Also return events from operator-hidden bulk sources (`CALENDAR_HIDDEN_PUBKEYS`); default `false` |
 | `kinds` | number[] | Event kinds to query (default: `[31922, 31923]`) |
 | `since` / `until` | number | Unix timestamp bounds on event creation time |
 | `limit` | number | Max results, 1-250 (default 20) |
@@ -553,6 +561,28 @@ Parameters:
 Each event carries `naddr` (NIP-19 addressable identifier) and, when
 `EDUFEED_APP_BASE_URL` is set, `url` (the edufeed-app viewer at `<base>/<naddr>`).
 Prefer citing `url` over `sourcePage`, since the viewer shows fuller event details.
+
+**Time semantics (NIP-52).** `start`/`end` are the raw tags. `end` is
+*exclusive* and is omitted for one-day (31922) and instantaneous (31923)
+events, so the response also carries `effectiveEnd` (Unix seconds when the
+event is over), `allDay` and, for all-day events, `lastDay` (the inclusive last
+day). An `end` at or before `start` is read as missing (legacy writers put the
+inclusive last day in `end`). `endTzid` inherits `startTzid` when absent.
+
+**Educational attributes** ("Calendar events in edufeed" wiki): `attributes`
+holds `registrationRequired`, `price` (`{amount, currency, free}`),
+`attendanceMode` (`online`/`offline`/`mixed`) and `educationalLevel`
+(`[{id, label}]`). A missing field means "no statement" — never "no" or "not
+free". Named speakers without a key are in `namedParticipants`, targeted
+communities in `communities`.
+
+**Authors and hidden sources.** Every event carries `author` `{pubkey, name,
+bot}` from the relay's kind-0 index; `bot: true` is the NIP-24 flag for
+automated accounts such as event mirrors. Operators can hide bulk sources by
+default with `CALENDAR_HIDDEN_PUBKEYS` (same entry forms as edufeed-app); the
+response then reports `hiddenSources: {hidden, included, note}` and
+`includeHiddenSources: true` brings them back. The `bot` flag alone hides
+nothing — which sources flood a calendar is the operator's call.
 
 ### list_calendar_authors
 

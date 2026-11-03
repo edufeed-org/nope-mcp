@@ -34,7 +34,21 @@ export interface CalendarSearchParams {
   query?: string;
   /** Community hex pubkey or npub; appends NIP-50 community:<hex> to the search. */
   community?: string;
+  /** Only free events (`price` amount 0). `false` adds no filter: a relay facet cannot express "not 0". */
+  free?: boolean;
+  /** Only events that do (true) / do not (false) require registration. */
+  registrationRequired?: boolean;
+  /** Only events held online / in person (offline) / hybrid (mixed). */
+  attendanceMode?: 'online' | 'offline' | 'mixed';
+  /** Only events for this KIM Bildungsstufe concept URI (`#educationalLevel:id`). */
+  educationalLevel?: string;
 }
+
+const ATTENDANCE_MODE_URI: Record<NonNullable<CalendarSearchParams['attendanceMode']>, string> = {
+  online: 'https://schema.org/OnlineEventAttendanceMode',
+  offline: 'https://schema.org/OfflineEventAttendanceMode',
+  mixed: 'https://schema.org/MixedEventAttendanceMode',
+};
 
 /**
  * Build a Nostr filter for NIP-52 calendar event queries.
@@ -82,6 +96,17 @@ export function buildCalendarFilter(params: CalendarSearchParams): Filter {
   if (params.hashtags?.length) {
     filter['#t'] = params.hashtags;
   }
+
+  // NIP-52-Edufeed attribute facets (nope-relay calendar collection). An
+  // event without the tag matches none of these — "no statement" is never
+  // "free" or "no registration".
+  const ext = filter as Record<string, unknown>;
+  if (params.free === true) ext['#price'] = ['0'];
+  if (params.registrationRequired !== undefined) {
+    ext['#registrationRequired'] = [String(params.registrationRequired)];
+  }
+  if (params.attendanceMode) ext['#eventAttendanceMode'] = [ATTENDANCE_MODE_URI[params.attendanceMode]];
+  if (params.educationalLevel) ext['#educationalLevel:id'] = [params.educationalLevel];
 
   return filter;
 }
