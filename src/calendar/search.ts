@@ -78,11 +78,16 @@ export async function searchCalendarEvents(
   const calPartition = partitionHiddenCalendarSources(calendars, deps.hidden, opts);
   const rsvpPartition = partitionHiddenCalendarSources(rsvps, deps.hidden, opts);
   const hiddenCount = partition.hidden + calPartition.hidden + rsvpPartition.hidden;
-  // The relay's own limit already bounds the non-over-fetched case; the
-  // slices only matter when we over-fetched for the hidden-source drop.
-  const events = partition.shown.slice(0, limit);
-  const calendarsOut = calPartition.shown.slice(0, limit);
-  const rsvpsOut = rsvpPartition.shown.slice(0, limit);
+  // `limit` caps the whole result, not each category: events first, then
+  // calendars, then RSVPs, until the budget is spent. The relay's own limit
+  // already bounds the non-over-fetched single-kind case; the slices matter
+  // for mixed kinds and when we over-fetched for the hidden-source drop.
+  let budget = limit;
+  const events = partition.shown.slice(0, budget);
+  budget -= events.length;
+  const calendarsOut = calPartition.shown.slice(0, budget);
+  budget -= calendarsOut.length;
+  const rsvpsOut = rsvpPartition.shown.slice(0, budget);
 
   const authors = await deps.authorCache.lookup(events.map((e) => e.nostr.pubkey));
   for (const event of events) {

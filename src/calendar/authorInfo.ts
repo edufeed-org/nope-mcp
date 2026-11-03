@@ -32,6 +32,8 @@ export function parseAuthorProfile(event: NostrEvent): CalendarAuthorInfo {
 export type ProfileFetcher = (pubkeys: string[]) => Promise<NostrEvent[]>;
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
+/** After a failed fetch (relay down) bare entries expire sooner, so a transient outage does not hide names for the full TTL. */
+const ERROR_TTL_MS = 60 * 1000;
 
 /**
  * In-memory cache of CalendarAuthorInfo keyed by pubkey. `lookup` fetches
@@ -60,6 +62,7 @@ export class CalendarAuthorCache {
     if (missing.length === 0) return result;
 
     const newest = new Map<string, NostrEvent>();
+    let ttl = this.ttlMs;
     try {
       for (const event of await this.fetcher(missing)) {
         if (event.kind !== 0) continue;
@@ -67,9 +70,10 @@ export class CalendarAuthorCache {
         if (!prev || prev.created_at < event.created_at) newest.set(event.pubkey, event);
       }
     } catch {
-      // Treat as "no profiles": bare entries below, retried after the TTL.
+      // Treat as "no profiles": bare entries below, retried after a short TTL.
+      ttl = Math.min(this.ttlMs, ERROR_TTL_MS);
     }
-    const expires = t + this.ttlMs;
+    const expires = t + ttl;
     for (const pubkey of missing) {
       const event = newest.get(pubkey);
       const info = event ? parseAuthorProfile(event) : { pubkey, bot: false };

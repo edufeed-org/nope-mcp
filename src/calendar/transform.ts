@@ -146,10 +146,17 @@ function readAttendanceMode(value: string): { attendanceMode?: AttendanceMode; a
   return mode ? { attendanceMode: mode, attendanceModeUri: `https://schema.org/${term}` } : { attendanceModeUri: value };
 }
 
-/** Wiki read rule: a non-negative number (decimal comma accepted); anything else is no statement. */
+/**
+ * Wiki read rule: a non-negative decimal (decimal comma accepted); anything
+ * else is no statement. Plain decimals only — `Number()` would also accept
+ * "1e3", "0x10" or "Infinity", which the relay's facet rejects, so such an
+ * event could never be found with `free: true` anyway.
+ */
 function readPrice(tag: string[]): CalendarEventAttributes['price'] | undefined {
-  const amount = Number((tag[1] ?? '').trim().replace(',', '.'));
-  if ((tag[1] ?? '').trim() === '' || !Number.isFinite(amount) || amount < 0) return undefined;
+  const raw = (tag[1] ?? '').trim().replace(',', '.');
+  if (!/^\d+(\.\d+)?$/.test(raw)) return undefined;
+  const amount = Number(raw);
+  if (!Number.isFinite(amount) || amount < 0) return undefined;
   const currency = (tag[2] ?? '').trim().toUpperCase();
   return { amount, ...(currency ? { currency } : {}), free: amount === 0 };
 }

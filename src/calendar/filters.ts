@@ -8,13 +8,13 @@ import { normalizeCommunityPubkey } from '../utils/community.js';
  * Standard relays will ignore them.
  */
 export interface CalendarSearchParams {
-  /** Unix timestamp — only events starting after this time */
+  /** Unix timestamp — only events starting at or after this time (inclusive) */
   startAfter?: number;
-  /** Unix timestamp — only events starting before this time */
+  /** Unix timestamp — only events starting at or before this time (inclusive) */
   startBefore?: number;
-  /** Unix timestamp — only events ending after this time */
+  /** Unix timestamp — only events whose effective end is after this time (strict: NIP-52 `end` is exclusive) */
   endAfter?: number;
-  /** Unix timestamp — only events ending before this time */
+  /** Unix timestamp — only events whose effective end is at or before this time (inclusive) */
   endBefore?: number;
   /** Geohash prefix for location-based search */
   geohash?: string;

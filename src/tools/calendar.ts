@@ -136,7 +136,8 @@ export function registerCalendarTools(
               'event (both in `events`); 31924 = calendar, a titled list of event coordinates (in `calendars`); ' +
               '31925 = RSVP, one user\'s attendance intention (in `rsvps`). "Who is coming to event X" = ' +
               'kinds [31925] with the event\'s coordinate in `references`; "events in calendar Y" = resolve ' +
-              'the calendar\'s eventRefs. Time-range, geohash and attribute filters apply to event kinds only.'
+              'the calendar\'s eventRefs. Time-range, geohash and attribute filters match event kinds only, so ' +
+              'combining them with 31924/31925 returns no calendars or RSVPs.'
           ),
         references: z
           .array(z.string())
