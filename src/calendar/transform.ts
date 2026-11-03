@@ -55,6 +55,8 @@ export interface CalendarEvent {
   effectiveEnd: number;
   /** 31922 only: the INCLUSIVE last day (YYYY-MM-DD), derived from the exclusive `end`. */
   lastDay?: string;
+  /** 31923: the `D` day tags as written (floor(unix/86400) per UTC day covered). */
+  days?: number[];
   startTzid?: string;
   /** Inherits `startTzid` when the event has an end but no `end_tzid` (NIP-52). */
   endTzid?: string;
@@ -182,7 +184,7 @@ function readAttributes(event: NostrEvent): CalendarEventAttributes | undefined 
         }
         break;
       case 'eventAttendanceMode':
-        if (!attrs.attendanceModeUri) Object.assign(attrs, readAttendanceMode(tag[1]));
+        if (!attrs.attendanceModeUri && tag[1]) Object.assign(attrs, readAttendanceMode(tag[1]));
         break;
       case 'educationalLevel:id':
         if (!levelIds.has(tag[1])) {
@@ -315,6 +317,11 @@ export function eventToCalendarEvent(event: NostrEvent): CalendarEvent | null {
   const calendarRefs = getTagValues(event, 'a').filter((a) => a.startsWith('31924:'));
   if (calendarRefs.length > 0) result.calendarRefs = calendarRefs;
 
+  const days = getTagValues(event, 'D')
+    .filter((d) => /^\d+$/.test(d))
+    .map(Number);
+  if (days.length > 0) result.days = days;
+
   const attributes = readAttributes(event);
   if (attributes) result.attributes = attributes;
 
@@ -381,7 +388,8 @@ export interface CalendarRsvp {
 export function eventToRsvp(event: NostrEvent): CalendarRsvp | null {
   if (event.kind !== 31925) return null;
   const identifier = getTagValue(event, 'd');
-  const eventRef = getTagValue(event, 'a');
+  // Spec: "coordinates to a kind 31922 or 31923 calendar event".
+  const eventRef = getTagValues(event, 'a').find((a) => /^3192[23]:/.test(a));
   const status = getTagValue(event, 'status');
   if (!identifier || !eventRef || (status !== 'accepted' && status !== 'declined' && status !== 'tentative')) {
     return null;

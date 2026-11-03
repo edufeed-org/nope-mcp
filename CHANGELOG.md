@@ -31,6 +31,15 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
   (`#p`) filters answer "who RSVP'd to event X", "which calendars list X"
   and "events naming participant Y". Events expose `calendarRefs`, the
   kind-31924 calendars they ask to be included in.
+- Events expose their `D` day tags as `days`; an RSVP whose `a` does not
+  reference a 31922/31923 coordinate is ignored; an empty
+  `eventAttendanceMode` is no statement.
+
+### Fixed
+
+- Geohash queries dropped most results: the client re-applied `#g` locally
+  as an exact match while the relay answers it as a prefix, so only events
+  whose geohash equalled the queried prefix survived. `#g` is now relay-only.
 - `CALENDAR_HIDDEN_PUBKEYS` (hex, npub or kind-30000 naddr entries, as in
   edufeed-app) hides bulk calendar sources from `search_calendar_events` by
   default; the response reports `hiddenSources` and `includeHiddenSources:

@@ -73,14 +73,16 @@ export async function searchCalendarEvents(
     }
   }
 
-  const partition = partitionHiddenCalendarSources(eventsToCalendarEvents(raw), deps.hidden, {
-    showHidden: !dropHidden,
-  });
+  const opts = { showHidden: !dropHidden };
+  const partition = partitionHiddenCalendarSources(eventsToCalendarEvents(raw), deps.hidden, opts);
+  const calPartition = partitionHiddenCalendarSources(calendars, deps.hidden, opts);
+  const rsvpPartition = partitionHiddenCalendarSources(rsvps, deps.hidden, opts);
+  const hiddenCount = partition.hidden + calPartition.hidden + rsvpPartition.hidden;
   // The relay's own limit already bounds the non-over-fetched case; the
   // slices only matter when we over-fetched for the hidden-source drop.
   const events = partition.shown.slice(0, limit);
-  const calendarsOut = calendars.slice(0, limit);
-  const rsvpsOut = rsvps.slice(0, limit);
+  const calendarsOut = calPartition.shown.slice(0, limit);
+  const rsvpsOut = rsvpPartition.shown.slice(0, limit);
 
   const authors = await deps.authorCache.lookup(events.map((e) => e.nostr.pubkey));
   for (const event of events) {
@@ -97,7 +99,7 @@ export async function searchCalendarEvents(
   if (rsvpsOut.length > 0) result.rsvps = rsvpsOut;
   if (deps.hidden.size > 0) {
     result.hiddenSources = {
-      hidden: partition.hidden,
+      hidden: hiddenCount,
       included: !dropHidden,
       note: dropHidden
         ? 'Events from operator-hidden bulk sources (event mirrors, imported catalogues) were left out of one relay page of 250, so fewer than `limit` may remain; pass includeHiddenSources: true to see them.'
