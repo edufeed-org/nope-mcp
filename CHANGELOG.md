@@ -6,6 +6,50 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ## [Unreleased]
 
+### Added
+
+- `search_calendar_events` returns NIP-52 time semantics the model no longer
+  has to know: `effectiveEnd` (Unix seconds when the event is over — an
+  end-less 31923 ends at its start, an end-less 31922 is a one-day event,
+  an `end` at or before `start` counts as missing), `allDay`, `lastDay` (the
+  inclusive last day of an all-day event), and `endTzid` inherited from
+  `startTzid`.
+- The edufeed educational attributes ("Calendar events in edufeed" wiki) are
+  exposed as `attributes` (`registrationRequired`, `price` with `free`,
+  `attendanceMode`, `educationalLevel` with labels), plus `namedParticipants`
+  (`participant` tags) and `communities` (`h` tags), and filterable with the
+  new `free`, `registrationRequired`, `attendanceMode` and `educationalLevel`
+  parameters (relay facets on nope-relay's calendar collection).
+- Every calendar event carries `author` `{pubkey, name, bot}` from the
+  relay's kind-0 index (NIP-24 `bot` marks mirrors and crawlers), cached per
+  author for 10 minutes.
+- `search_calendar_events` covers all four NIP-52 kinds: `kinds: [31924]`
+  returns calendars (`calendars`: title, description, `eventRefs`) and
+  `kinds: [31925]` RSVPs (`rsvps`: status, `freeBusy` — dropped when
+  declined, `eventRef`, `eventId`, `eventAuthor`, note); an RSVP without a
+  valid status is ignored. New `references` (`#a`) and `participants`
+  (`#p`) filters answer "who RSVP'd to event X", "which calendars list X"
+  and "events naming participant Y". Events expose `calendarRefs`, the
+  kind-31924 calendars they ask to be included in.
+- Events expose their `D` day tags as `days`; an RSVP whose `a` does not
+  reference a 31922/31923 coordinate is ignored; an empty
+  `eventAttendanceMode` is no statement.
+
+### Fixed
+
+- Attribute read rules now match edufeed-app's `calendar-attributes.js`
+  exactly: the first VALID tag of a name wins (an invalid one no longer
+  shadows a later valid one), the attendance mode is trimmed and read by
+  its last path segment, an empty `educationalLevel:id` is skipped, and an
+  empty `title` falls back to the deprecated `name`.
+- Geohash queries dropped most results: the client re-applied `#g` locally
+  as an exact match while the relay answers it as a prefix, so only events
+  whose geohash equalled the queried prefix survived. `#g` is now relay-only.
+- `CALENDAR_HIDDEN_PUBKEYS` (hex, npub or kind-30000 naddr entries, as in
+  edufeed-app) hides bulk calendar sources from `search_calendar_events` by
+  default; the response reports `hiddenSources` and `includeHiddenSources:
+  true` returns them. A `bot` flag alone hides nothing.
+
 ### Changed
 
 - License classification reads ALL `license:id` tags of a learning resource

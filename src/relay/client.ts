@@ -112,12 +112,20 @@ export interface RelayQueryDiagnostics {
   timedOut: string[];
 }
 
-/** Standard single-letter NIP-01 tag filters that events actually contain */
+/**
+ * Standard single-letter NIP-01 tag filters that events actually contain AND
+ * that the relay matches exactly, so re-applying them locally through
+ * nostr-tools' matchFilters is safe. `#g` is deliberately NOT here: the
+ * calendar relay answers it as a geohash PREFIX (NIP-52 relay extension), so
+ * an event tagged `g=u33dc0` for a `#g=u33d` query would pass the relay and
+ * be discarded by an exact local match. It is treated as relay-only, like
+ * `#start_after`.
+ */
 const STANDARD_TAG_FILTERS = new Set([
-  '#e', '#p', '#a', '#d', '#g', '#i', '#k', '#l', '#L', '#r', '#t',
+  '#e', '#p', '#a', '#d', '#i', '#k', '#l', '#L', '#r', '#t',
 ]);
 
-function isStandardTagFilter(key: string): boolean {
+export function isStandardTagFilter(key: string): boolean {
   return STANDARD_TAG_FILTERS.has(key);
 }
 
