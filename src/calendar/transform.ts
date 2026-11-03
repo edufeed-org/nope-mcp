@@ -106,8 +106,9 @@ function formatDay(seconds: number): string {
   return new Date(seconds * 1000).toISOString().slice(0, 10);
 }
 
+/** Unix seconds: digits with an optional minus (a leading '+' is rejected, as on the relay). */
 function parseSeconds(value: string | undefined): number | undefined {
-  if (value === undefined || !/^\d+$/.test(value)) return undefined;
+  if (value === undefined || !/^-?\d+$/.test(value)) return undefined;
   return Number(value);
 }
 
@@ -177,8 +178,12 @@ function readPrice(tag: string[]): CalendarEventAttributes['price'] | undefined 
  */
 function readAttributes(event: NostrEvent): CalendarEventAttributes | undefined {
   const attrs: CalendarEventAttributes = {};
-  const levels: { id: string; label?: string; anyLabel?: string }[] = [];
+  // Concept triples exactly as calendar-attributes.js reads them: ids are
+  // trimmed, an empty or repeated id resets the current concept (so following
+  // labels attach to nothing), the first non-empty label per language wins.
+  const levels: { id: string; labels: Record<string, string> }[] = [];
   const levelIds = new Set<string>();
+  let current: { id: string; labels: Record<string, string> } | null = null;
 
   for (const tag of event.tags) {
     if (tag.length < 2) continue;
@@ -200,31 +205,32 @@ function readAttributes(event: NostrEvent): CalendarEventAttributes | undefined 
           if (mode) Object.assign(attrs, mode);
         }
         break;
-      case 'educationalLevel:id':
-        if (!tag[1]) break;
-        if (!levelIds.has(tag[1])) {
-          levelIds.add(tag[1]);
-          levels.push({ id: tag[1] });
-        } else {
-          // A repeated concept: route its labels to the existing entry.
-          const existing = levels.find((l) => l.id === tag[1])!;
-          levels.push(existing);
+      case 'educationalLevel:id': {
+        const id = tag[1].trim();
+        if (!id || levelIds.has(id)) {
+          current = null;
+          break;
         }
+        levelIds.add(id);
+        current = { id, labels: {} };
+        levels.push(current);
         break;
+      }
       default:
-        if (tag[0].startsWith('educationalLevel:prefLabel:') && levels.length > 0) {
-          const current = levels[levels.length - 1];
-          if (tag[0] === 'educationalLevel:prefLabel:de') current.label = tag[1];
-          else current.anyLabel ??= tag[1];
+        if (tag[0].startsWith('educationalLevel:prefLabel:') && current) {
+          const lang = tag[0].slice('educationalLevel:prefLabel:'.length);
+          const value = tag[1].trim();
+          if (value && !current.labels[lang]) current.labels[lang] = value;
         }
     }
   }
 
   if (levels.length > 0) {
-    const seen = new Set<string>();
-    attrs.educationalLevel = levels
-      .filter((l) => (seen.has(l.id) ? false : (seen.add(l.id), true)))
-      .map((l) => ({ id: l.id, label: l.label ?? l.anyLabel ?? l.id.split('/').filter(Boolean).pop() ?? l.id }));
+    // Display label like the app's pickConceptLabel: de → en → first → URI tail.
+    attrs.educationalLevel = levels.map((l) => ({
+      id: l.id,
+      label: l.labels.de ?? l.labels.en ?? Object.values(l.labels)[0] ?? l.id.split('/').filter(Boolean).pop() ?? l.id,
+    }));
   }
 
   return Object.keys(attrs).length > 0 ? attrs : undefined;
