@@ -59,27 +59,23 @@ export function registerCalendarTools(
         startAfter: z
           .number()
           .optional()
-          .describe(
-            'Only events starting after this Unix timestamp'
-          ),
+          .describe('Only events starting at or after this Unix timestamp (inclusive)'),
         startBefore: z
           .number()
           .optional()
-          .describe(
-            'Only events starting before this Unix timestamp'
-          ),
+          .describe('Only events starting at or before this Unix timestamp (inclusive)'),
         endAfter: z
           .number()
           .optional()
           .describe(
-            'Only events ending after this Unix timestamp'
+            'Only events still running after this Unix timestamp (strict: NIP-52 `end` is exclusive, so an ' +
+              'event ending exactly then is over). "Ongoing or upcoming" = endAfter: now; one-day and ' +
+              'instantaneous events are included via their effective end.'
           ),
         endBefore: z
           .number()
           .optional()
-          .describe(
-            'Only events ending before this Unix timestamp'
-          ),
+          .describe('Only events over by this Unix timestamp (inclusive: an event ending exactly then counts)'),
         geohash: z
           .string()
           .optional()
