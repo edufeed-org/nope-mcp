@@ -1,22 +1,12 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AMBRelayClient } from '../relay/client.js';
-import { buildCalendarFilter } from '../calendar/filters.js';
-import {
-  eventsToCalendarEvents,
-  eventToCalendarCollection,
-  eventToRsvp,
-  type CalendarCollection,
-  type CalendarRsvp,
-} from '../calendar/transform.js';
 import { CalendarAuthorCache } from '../calendar/authorInfo.js';
-import { getHiddenCalendarSources, partitionHiddenCalendarSources } from '../calendar/hiddenSources.js';
+import { getHiddenCalendarSources } from '../calendar/hiddenSources.js';
+import { searchCalendarEvents } from '../calendar/search.js';
 import { getCalendarAuthorDirectory } from '../authors.js';
 import { newRelayDiagnostics, relayDiagnosticsFields } from './relaySelection.js';
 import { READ_ONLY } from './annotations.js';
-
-/** Relay page size; the over-fetch ceiling when hidden sources are dropped client-side. */
-const RELAY_MAX_LIMIT = 250;
 
 /**
  * Register calendar event tools with the MCP server
@@ -183,81 +173,19 @@ export function registerCalendarTools(
       annotations: READ_ONLY,
     },
     async (params) => {
-      const hidden = getHiddenCalendarSources();
-      // Hidden sources are dropped client-side (a Nostr filter cannot
-      // exclude authors), so over-fetch to the relay page size and cut back
-      // to the requested limit afterwards.
-      const dropHidden = hidden.size > 0 && !params.includeHiddenSources;
-      const filter = buildCalendarFilter({
-        query: params.query,
-        startAfter: params.startAfter,
-        startBefore: params.startBefore,
-        endAfter: params.endAfter,
-        endBefore: params.endBefore,
-        geohash: params.geohash,
-        hashtags: params.hashtags,
-        authors: params.authors,
-        community: params.community,
-        free: params.free,
-        registrationRequired: params.registrationRequired,
-        attendanceMode: params.attendanceMode,
-        educationalLevel: params.educationalLevel,
-        kinds: params.kinds,
-        references: params.references,
-        participants: params.participants,
-        since: params.since,
-        until: params.until,
-        limit: dropHidden ? RELAY_MAX_LIMIT : params.limit,
-      });
-
       const diag = newRelayDiagnostics();
-      const raw = await calendarClient.queryEvents(filter, undefined, { diag });
-      const calendars: CalendarCollection[] = [];
-      const rsvps: CalendarRsvp[] = [];
-      for (const e of raw) {
-        if (e.kind === 31924) {
-          const c = eventToCalendarCollection(e);
-          if (c) calendars.push(c);
-        } else if (e.kind === 31925) {
-          const r = eventToRsvp(e);
-          if (r) rsvps.push(r);
-        }
-      }
-      const partition = partitionHiddenCalendarSources(eventsToCalendarEvents(raw), hidden, {
-        showHidden: !dropHidden,
+      const result = await searchCalendarEvents(calendarClient, params, {
+        authorCache,
+        hidden: getHiddenCalendarSources(),
+        directory: getCalendarAuthorDirectory(),
+        diag,
       });
-      const calendarEvents = dropHidden ? partition.shown.slice(0, params.limit) : partition.shown;
-
-      const directory = getCalendarAuthorDirectory();
-      const authors = await authorCache.lookup(calendarEvents.map((e) => e.nostr.pubkey));
-      for (const event of calendarEvents) {
-        const info = authors.get(event.nostr.pubkey) ?? { pubkey: event.nostr.pubkey, bot: false };
-        const fromDirectory = directory?.authors.find((a) => a.pubkey === event.nostr.pubkey)?.name;
-        event.author = info.name || !fromDirectory ? info : { ...info, name: fromDirectory };
-      }
 
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify({
-              total: calendarEvents.length,
-              events: calendarEvents,
-              ...(calendars.length > 0 ? { calendars } : {}),
-              ...(rsvps.length > 0 ? { rsvps } : {}),
-              ...(hidden.size > 0
-                ? {
-                    hiddenSources: {
-                      hidden: partition.hidden,
-                      included: !dropHidden,
-                      note: dropHidden
-                        ? 'Events from operator-hidden bulk sources (event mirrors, imported catalogues) were left out of one relay page of 250, so fewer than `limit` may remain; pass includeHiddenSources: true to see them.'
-                        : 'Events from operator-hidden bulk sources are included; their author.bot flag marks automated accounts.',
-                    },
-                  }
-                : {}),
-              ...relayDiagnosticsFields(diag),
-            }),
+            text: JSON.stringify({ ...result, ...relayDiagnosticsFields(diag) }),
           },
         ],
       };
