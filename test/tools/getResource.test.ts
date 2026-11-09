@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { nip19 } from 'nostr-tools';
-import { naddrToLookup, runGetResource } from '../../src/tools/get.js';
+import { naddrToLookup, runGetResource, registerGetTool } from '../../src/tools/get.js';
+import { AMBRelayClient } from '../../src/relay/client.js';
 import { buildSessionServer } from '../../src/session.js';
 
 function pk(n: number): string {
@@ -19,6 +20,7 @@ describe('naddrToLookup', () => {
       identifier: 'https://example.org/material/peace/',
       author: pk(7),
       kind: 30142,
+      relays: [],
     });
   });
 
@@ -190,5 +192,28 @@ describe('get_resource tool description matches the licenseFilterMax setting', (
 
     const any = getResourceDescription('any');
     expect(any).not.toMatch(/caps the search tools' licenseFilter/);
+  });
+});
+
+describe('get_resource naddr relay hints', () => {
+  async function lookupRelays(hints: string[], relays?: string[]) {
+    let handler: (p: Record<string, unknown>) => Promise<unknown> = async () => undefined;
+    const server = { registerTool: (_n: string, _d: unknown, h: typeof handler) => (handler = h) };
+    const client = new AMBRelayClient(['wss://relay.edufeed.org'], { extraRelays: ['wss://oersi.example'] });
+    const spy = vi.spyOn(client, 'getByDTag').mockResolvedValue(null);
+    registerGetTool(server as never, client);
+    const naddr = nip19.naddrEncode({ kind: 30142, pubkey: pk(7), identifier: 'x', relays: hints });
+    await handler({ naddr, relays });
+    client.close();
+    return spy.mock.calls[0][3];
+  }
+
+  it('queries a known hint relay when no relays are given', async () => {
+    expect(await lookupRelays(['wss://oersi.example'])).toEqual(['wss://oersi.example']);
+  });
+
+  it('ignores unknown hints and never overrides an explicit selection', async () => {
+    expect(await lookupRelays(['wss://evil.example'])).toEqual(['wss://relay.edufeed.org']);
+    expect(await lookupRelays(['wss://oersi.example'], ['wss://relay.edufeed.org'])).toEqual(['wss://relay.edufeed.org']);
   });
 });

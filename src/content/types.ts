@@ -17,6 +17,8 @@ interface ContentResultBase {
   url?: string;
   /** NIP-19 addressable identifier. */
   naddr?: string;
+  /** Relay this event was taken from, when known (also the naddr's relay hint). */
+  relay?: string;
   /** The Nostr event signer (uploader/aggregator) — NOT necessarily the resource's creator/publisher. */
   eventAuthor: { pubkey: string; npub?: string };
   createdAt: number;
@@ -26,6 +28,8 @@ interface ContentResultBase {
   snippet?: string;
   /** Chunk score from the snippet, when available. */
   score?: number;
+  /** Lexical title/description match of the query (0–1); ranking key is `(score ?? 0) + lexical`. */
+  lexical?: number;
   /** Locators from the snippet, when known. */
   page?: number;
   heading?: string;

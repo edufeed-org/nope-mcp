@@ -102,6 +102,8 @@ const CALENDAR_AUTHOR_SETS =
   process.env.CALENDAR_AUTHOR_SETS?.split(',').filter(Boolean) || [];
 const CALENDAR_HIDDEN_PUBKEYS = process.env.CALENDAR_HIDDEN_PUBKEYS;
 const SPELL_RELAYS = process.env.SPELL_RELAYS?.split(',').filter(Boolean) || ['wss://relay.edufeed.org'];
+// Unset → undefined (no default): find_community stays unregistered.
+const COMMUNITY_RELAYS = process.env.COMMUNITY_RELAYS?.split(',').filter(Boolean);
 const indexer = IndexerClient.fromEnv(process.env.INDEXER_ENDPOINTS, process.env.INDEXER_API_TOKEN, process.env.INDEXER_API_TOKENS);
 const LICENSE_FILTER_MAX = parseLicenseFilterMax(process.env);
 
@@ -128,6 +130,7 @@ async function main() {
   console.log(`AMB Relays: ${AMB_RELAYS.join(', ')}`);
   if (AMB_EXTRA_RELAYS.length) console.log(`AMB Extra Relays: ${AMB_EXTRA_RELAYS.join(', ')}`);
   console.log(`Calendar Relays: ${CALENDAR_RELAYS.join(', ')}`);
+  if (COMMUNITY_RELAYS?.length) console.log(`Community Relays: ${COMMUNITY_RELAYS.join(', ')}`);
   console.log(`HTTP bind: ${HTTP_HOST}:${HTTP_PORT}`);
   console.log(`Auth: OAuth (issuer ${OAUTH_ISSUER}, audience ${OAUTH_AUDIENCE.join(' | ')})`);
   if (HTTP_ALLOWED_HOSTS?.length) console.log(`Allowed hosts: ${HTTP_ALLOWED_HOSTS.join(', ')}`);
@@ -180,6 +183,11 @@ async function main() {
   // search_passages calls.
   const spellClient = new AMBRelayClient(SPELL_RELAYS);
 
+  // Community relay client (COMMUNITY_RELAYS, optional): shared across
+  // sessions like spellClient, since the community list is global config,
+  // not session-scoped. Unset → find_community is never registered.
+  const communityClient = COMMUNITY_RELAYS?.length ? new AMBRelayClient(COMMUNITY_RELAYS) : undefined;
+
   const handle = await startHttpServer({
     port: HTTP_PORT,
     host: HTTP_HOST,
@@ -211,6 +219,7 @@ async function main() {
           spellClient,
           indexer: indexer ?? undefined,
           licenseFilterMax: LICENSE_FILTER_MAX,
+          communityClient,
         },
       );
       return { server, dispose };
@@ -231,6 +240,7 @@ async function main() {
       console.error('Error closing HTTP server:', err);
     }
     spellClient.close();
+    communityClient?.close();
     process.exit(0);
   };
 

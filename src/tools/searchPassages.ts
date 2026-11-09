@@ -34,10 +34,12 @@ export interface SearchPassagesDeps {
   fetchSpellEvent: (idHex: string, hintRelays: string[]) => Promise<FetchSpellResult>;
   /** Latest kind-3 p-tags for a pubkey ($contacts). */
   fetchContacts: (pubkeyHex: string) => Promise<string[]>;
-  /** Scoped chunk search on the effective relay's indexer. */
+  /** Scoped chunk search on one relay's indexer. */
   searchChunks: (relay: string, body: { q: string; k: number; filter: Record<string, unknown>; alpha?: number }) => Promise<{ hits: PassageHit[]; total: number }>;
-  /** The effective relay URL for this call. */
+  /** The primary relay: used for the content-scope query and as the `relaySearched` compat field. */
   relay: string;
+  /** Every indexed relay to fan `searchChunks` out to. Defaults to `[relay]`. */
+  relays?: string[];
 }
 
 export interface SearchPassagesParams extends InlineScopeParams {
@@ -54,6 +56,8 @@ export interface SearchPassagesParams extends InlineScopeParams {
 /** A passage whose text may reach the client. license/creator/publisher are set for 30142 hits only. */
 export type ReleasedPassage = PassageHit & {
   accessLevel: 'full';
+  /** Relay whose indexer returned the hit (configured spelling). */
+  relay?: string;
   license?: LicenseInfo | null;
   creator?: string[];
   publisher?: string[];
@@ -87,8 +91,9 @@ function attribution(hit: PassageHit): { creator?: string[]; publisher?: string[
 }
 
 function toReleasedPassage(hit: PassageHit): ReleasedPassage {
-  if (!hit.event_coord.startsWith('30142:')) return { ...hit, accessLevel: 'full' };
-  return { ...hit, accessLevel: 'full', license: ambLicense(hit), ...attribution(hit) };
+  const base = { ...hit, accessLevel: 'full' as const };
+  if (!hit.event_coord.startsWith('30142:')) return base;
+  return { ...base, license: ambLicense(hit), ...attribution(hit) };
 }
 
 /**
@@ -118,14 +123,14 @@ export function coordToNaddr(coord: string, relay: string): string | undefined {
  * field from metadata only — never spreads the hit — so no text, snippet,
  * heading, section_path or page can leak, whatever the indexer sent.
  */
-function toMetadataOnlyMatches(hits: PassageHit[], relay: string, limit: number): MetadataOnlyMatch[] {
+function toMetadataOnlyMatches(hits: PassageHit[], fallbackRelay: string, limit: number): MetadataOnlyMatch[] {
   const seen = new Set<string>();
   const out: MetadataOnlyMatch[] = [];
   for (const hit of hits) {
     if (out.length >= limit) break;
     if (seen.has(hit.event_coord)) continue;
     seen.add(hit.event_coord);
-    const naddr = coordToNaddr(hit.event_coord, relay);
+    const naddr = coordToNaddr(hit.event_coord, hit.relay ?? fallbackRelay);
     if (!naddr) continue;
     const name = hit.amb?.name;
     out.push({
@@ -310,12 +315,51 @@ export async function runSearchPassages(
   const { effective, clamped } = clampLicenseFilter(params.licenseFilter, params.licenseFilterMax ?? 'any');
   const limit = Math.min(params.limit ?? 10, 25);
   const k = Math.min(limit * OVERFETCH_FACTOR * LICENSE_OVERFETCH_FACTOR, 100);
-  const res = await deps.searchChunks(deps.relay, { q: params.question, k, filter: scope.chunkFilter, alpha: PASSAGE_ALPHA });
-  const { released, metadataOnly } = partitionPassageHits(res.hits, effective);
+  const relays = deps.relays ?? [deps.relay];
+  const settled = await Promise.allSettled(
+    relays.map((r) => deps.searchChunks(r, { q: params.question, k, filter: scope.chunkFilter, alpha: PASSAGE_ALPHA }))
+  );
+  const relaysSearched: string[] = [];
+  const relaysIncomplete: string[] = [];
+  const hits: PassageHit[] = [];
+  settled.forEach((result, i) => {
+    const r = relays[i];
+    if (result.status === 'fulfilled') {
+      relaysSearched.push(r);
+      for (const hit of result.value.hits) hits.push({ ...hit, relay: r });
+    } else {
+      relaysIncomplete.push(r);
+    }
+  });
+  if (relaysSearched.length === 0) {
+    // Every relay failed — surface the failure rather than a silent empty
+    // result. A single relay (including the old "no indexer configured"
+    // case) throws its original reason unchanged, so the wrapper's
+    // `instanceof SpellError` handling keeps working; several relays are
+    // aggregated so the message names every one that was tried.
+    const reasons = settled.map((r) => (r as PromiseRejectedResult).reason);
+    if (relays.length === 1) throw reasons[0];
+    if (reasons.every((e) => e instanceof SpellError)) {
+      throw new SpellError(
+        'indexer_error',
+        `all indexed relays failed: ${reasons.map((e, i) => `${relays[i]}: ${(e as SpellError).message}`).join('; ')}`
+      );
+    }
+    throw new AggregateError(reasons, `search_passages: all indexed relays failed: ${relays.join(', ')}`);
+  }
+  // Stable sort: within a relay, hits already arrive in the indexer's fused
+  // rank order, which is kept as the tiebreak for equal scores.
+  hits.sort((a, b) => b.score - a.score);
+  // The same chunk from two relays (shared indexer or mirrored event) counts once, best score first.
+  const seenChunks = new Set<string>();
+  const uniqueHits = hits.filter((h) => !h.chunk_id || (!seenChunks.has(h.chunk_id) && !!seenChunks.add(h.chunk_id)));
+  const { released, metadataOnly } = partitionPassageHits(uniqueHits, effective);
 
   return {
     passages: selectPassages(released, limit).map(toReleasedPassage),
     metadataOnlyMatches: toMetadataOnlyMatches(metadataOnly, deps.relay, limit),
+    relaysSearched,
+    ...(relaysIncomplete.length > 0 ? { relaysIncomplete } : {}),
     licenseFilter: effective,
     ...(clamped ? { licenseFilterClamped: true as const } : {}),
     scope: {
@@ -378,7 +422,9 @@ export function registerSearchPassagesTool(
         'entirely; the response carries the canonical spell for whatever scope was used — ' +
         'publish it (e.g. via grimoire) to make the scope reusable. Spells may use ' +
         '$me/$contacts; they resolve to the calling user (pass `me` if the transport is ' +
-        'anonymous). Fails rather than widening scope: an empty scope, unreachable relay ' +
+        'anonymous). Scope materialization (tag/search/community spells) runs against the ' +
+        'primary relay only; the passage search itself fans out to every selected indexed relay. ' +
+        'Fails rather than widening scope: an empty scope, unreachable relay ' +
         '(relay_unreachable — tell the user to retry), or unreachable index is a typed ' +
         'error, never a silently unscoped search.',
       inputSchema: {
@@ -392,7 +438,7 @@ export function registerSearchPassagesTool(
         since: z.string().optional().describe('Inline scope: absolute Unix seconds or relative (7d, 1mo, now).'),
         until: z.string().optional().describe('Inline scope: absolute Unix seconds or relative.'),
         me: z.string().optional().describe('Who $me refers to (npub or hex). Defaults to the calling identity.'),
-        relays: z.array(z.string()).optional().describe('Relay selection (list_relays set), by full URL or short name (e.g. "oersi", "sodix"). First mapped relay is used.'),
+        relays: z.array(z.string()).optional().describe('Relay selection (list_relays set), by full URL or short name (e.g. "oersi", "sodix"). Every selected relay with a passage index is searched and the results merged.'),
         limit: z.number().min(1).max(25).optional().default(10).describe('Passages to return (1-25, default 10); also caps metadataOnlyMatches.'),
         licenseFilter: z
           .enum(['open', 'cc-any', 'any'])
@@ -411,9 +457,12 @@ export function registerSearchPassagesTool(
       if ('errorPayload' in selection) {
         return { content: [{ type: 'text', text: JSON.stringify(selection.errorPayload) }] };
       }
-      const relay = selection.relays.find((r) => indexer.forRelay(r)) ?? selection.relays[0];
+      const indexedRelays = selection.relays.filter((r) => indexer.forRelay(r));
+      const relays = indexedRelays.length > 0 ? indexedRelays : [selection.relays[0]];
+      const relay = relays[0];
       const deps: SearchPassagesDeps = {
         relay,
+        relays,
         queryContentEvents: (f) => client.queryEvents(f, [relay], { strict: true }),
         fetchSpellEvent: makeFetchSpellEvent(spellClient),
         fetchContacts: makeFetchContacts(spellClient),
@@ -421,12 +470,12 @@ export function registerSearchPassagesTool(
       };
       try {
         const out = await runSearchPassages(deps, { ...(params as SearchPassagesParams), licenseFilterMax }, extra);
-        const notSearched = relaysNotSearched(client, [relay]);
+        const notSearched = relaysNotSearched(client, relays);
         return {
           content: [{
             type: 'text',
             text: JSON.stringify({
-              relaySearched: relay,
+              relaySearched: out.relaysSearched[0] ?? relay,
               ...(notSearched.length > 0 ? { relaysNotSearched: notSearched } : {}),
               ...out,
             }),

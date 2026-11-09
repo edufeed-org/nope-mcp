@@ -4,6 +4,7 @@ import { finalizeEvent, generateSecretKey } from 'nostr-tools';
 import type { NostrEvent } from 'nostr-tools';
 import { AMBRelayClient } from '../../src/relay/client.js';
 import { newRelayDiagnostics } from '../../src/tools/relaySelection.js';
+import { getEventRelay } from '../../src/relay/provenance.js';
 
 /**
  * A minimal real NIP-01 relay (over an actual WebSocket, not a mocked
@@ -123,6 +124,28 @@ describe('real relay: eoseTimeout/maxWait wiring (regression for the 4400ms nost
     expect(result.map((e) => e.id).sort()).toEqual(events.map((e) => e.id).sort());
     expect(diag.timedOut).toEqual([relay.url]);
   }, 10000);
+
+  it.each(['query', 'queryEvents'] as const)(
+    '%s() keeps the newest copy of a coordinate across relays and records its relay',
+    async (method) => {
+      const sk = generateSecretKey();
+      const make = (created_at: number) =>
+        finalizeEvent({ kind: 30142, created_at, tags: [['d', 'x'], ['name', 'X']], content: String(created_at) }, sk);
+      const a = await startFakeRelay({ events: [make(100)] });
+      const b = await startFakeRelay({ events: [make(200)], delayMs: 50 });
+      cleanup = async () => { await a.close(); await b.close(); };
+      client = new AMBRelayClient([a.url, b.url], { queryTimeoutMs: 2000 });
+
+      const result =
+        method === 'query'
+          ? await client.query({ kinds: [30142], limit: 10 }, [a.url, b.url])
+          : await client.queryEvents({ kinds: [30142], limit: 10 }, [a.url, b.url]);
+
+      expect(result.map((e) => e.content)).toEqual(['200']);
+      expect(getEventRelay(result[0])).toBe(b.url); // configured spelling, no trailing slash
+    },
+    10000
+  );
 
   it('queryEvents() returns partial events and flags the relay incomplete when it stalls past a short RELAY_QUERY_TIMEOUT_MS', async () => {
     const events = [signedResourceEvent('f')];

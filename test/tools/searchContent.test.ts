@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { runContentSearch } from '../../src/tools/searchContent.js';
 import type { NostrEvent, Filter } from 'nostr-tools';
 import type { ResourceResult, ArticleResult } from '../../src/content/types.js';
+import { nip19 } from 'nostr-tools';
+import { setEventRelay } from '../../src/relay/provenance.js';
 
 function evt(kind: number, id: string, tags: string[][], content = ''): NostrEvent {
   return { id, pubkey: 'a'.repeat(64), created_at: 1700000000, kind, tags, content, sig: 's' };
@@ -14,12 +16,12 @@ function fakeClient(events: NostrEvent[]) {
 }
 
 describe('runContentSearch', () => {
-  it('returns typed, relay-ordered results with snippets attached and 21142 excluded', async () => {
+  it('returns typed, ranked results with snippets attached and 21142 excluded', async () => {
     const article = evt(30023, 'art1', [['d', 'a'], ['title', 'Aufmerksamkeit']], 'body a');
     const artSnip = evt(21142, 'snip-art1', [['e', 'art1'], ['k', '30023'], ['score', '0.81']], 'passage A');
     const wiki = evt(30818, 'wiki1', [['d', 'w'], ['title', 'Seminar']], 'body w');
     const wikiSnip = evt(21142, 'snip-wiki1', [['e', 'wiki1'], ['k', '30818'], ['score', '0.66']], 'passage W');
-    const resource = evt(30142, 'res1', [['d', 'r'], ['name', 'Video']]);
+    const resource = evt(30142, 'res1', [['d', 'r'], ['name', 'Video zur Aufmerksamkeit']]);
 
     const out = await runContentSearch(
       fakeClient([article, artSnip, wiki, wikiSnip, resource]),
@@ -27,11 +29,12 @@ describe('runContentSearch', () => {
     );
 
     expect(out.total).toBe(3);
-    expect(out.results.map((r) => r.type)).toEqual(['article', 'wiki', 'resource']);
+    // Ranked by score + lexical: article 0.81+1, resource 0+1, wiki 0.66+0.
+    expect(out.results.map((r) => r.type)).toEqual(['article', 'resource', 'wiki']);
     expect(out.results[0].snippet).toBe('passage A');
     expect(out.results[0].score).toBeCloseTo(0.81);
-    expect(out.results[1].snippet).toBe('passage W');
-    expect(out.results[2].snippet).toBeUndefined(); // no snippet for the resource
+    expect(out.results[2].snippet).toBe('passage W');
+    expect(out.results[1].snippet).toBeUndefined(); // no snippet for the resource
     // No 21142 leaks into results
     expect(out.results.some((r) => (r as { kind: number }).kind === 21142)).toBe(false);
   });
@@ -55,6 +58,20 @@ describe('runContentSearch', () => {
     expect(out.results.map((r) => r.type)).toEqual(['article', 'wiki']);
     expect(out.results[0].snippet).toBe('passage A');
     expect(out.results[1].snippet).toBe('passage W');
+  });
+
+  it('carries the source relay and hints it in the naddr', async () => {
+    const article = evt(30023, 'art1', [['d', 'a'], ['title', 'Aufmerksamkeit']], 'body a');
+    const resource = evt(30142, 'res1', [['d', 'r'], ['name', 'Video zur Aufmerksamkeit']]);
+    const bare = evt(30818, 'wiki1', [['d', 'w'], ['title', 'Seminar']]);
+    setEventRelay(article, 'wss://a.example');
+    setEventRelay(resource, 'wss://b.example');
+
+    const out = await runContentSearch(fakeClient([article, resource, bare]), { query: 'x' });
+
+    expect(out.results.map((r) => r.relay)).toEqual(['wss://a.example', 'wss://b.example', undefined]);
+    const decoded = out.results.map((r) => (nip19.decode(r.naddr!).data as { relays?: string[] }).relays);
+    expect(decoded).toEqual([['wss://a.example'], ['wss://b.example'], []]);
   });
 
   it('returns an empty result set when the relay returns nothing', async () => {
@@ -82,7 +99,7 @@ describe('runContentSearch', () => {
       ['i', 'doi:10.1/x'],
     ]);
     const pubSnip = evt(21142, 'snip-pub1', [['e', 'pub1'], ['k', '30040'], ['score', '0.9']], 'passage P');
-    const section = evt(30041, 'sec1', [['d', 'ch-1'], ['title', 'Kapitel 1']], 'section body text');
+    const section = evt(30041, 'sec1', [['d', 'ch-1'], ['title', 'Kapitel 1: Prüfungen']], 'section body text');
     const out = await runContentSearch(fakeClient([pub, pubSnip, section]), { query: 'prüfungen' });
     expect(out.total).toBe(2);
     expect(out.results.map((r) => r.kind)).toEqual([30040, 30041]);
@@ -281,5 +298,43 @@ describe('runContentSearch license-only zero-match hint (Gendering MINT bug, ana
     const out = await runContentSearch(fakeClient([]), { query: 'x', licenseFilter: 'any' });
     expect(out.total).toBe(0);
     expect(out.hint).toBeUndefined();
+  });
+});
+
+describe('runContentSearch cross-relay ranking', () => {
+  const cookie = evt(30023, 'cookie', [['d', 'c'], ['title', 'Cookie Policy (EU)']], 'body');
+  const cookieSnip = evt(21142, 'snip-c', [['e', 'cookie'], ['k', '30023'], ['score', '0.7']], 'cookies');
+  const vorkurs = evt(30142, 'vk', [
+    ['d', 'v'], ['name', 'Vorkurs Mathematik "11 Stochastik"'], ['description', 'Grundlagen der Statistik'],
+  ]);
+  const other = evt(30142, 'oth', [['d', 'o'], ['name', 'Kekse backen']]);
+
+  it('ranks the exact title above a higher-snippet unrelated hit and applies limit after the sort', async () => {
+    const out = await runContentSearch(fakeClient([cookie, cookieSnip, other, vorkurs]), {
+      query: 'Statistik Vorkurs',
+      limit: 1,
+    });
+    expect(out.results.map((r) => r.title)).toEqual(['Vorkurs Mathematik "11 Stochastik"']);
+    expect(out.results[0].lexical).toBe(0.75);
+    expect(out.total).toBe(1);
+  });
+
+  it('sorts zero-match hits last instead of dropping them', async () => {
+    const out = await runContentSearch(fakeClient([cookie, cookieSnip, other, vorkurs]), {
+      query: 'Statistik Vorkurs',
+    });
+    expect(out.results.map((r) => r.title)).toEqual([
+      'Vorkurs Mathematik "11 Stochastik"', 'Cookie Policy (EU)', 'Kekse backen',
+    ]);
+  });
+
+  it('field-only search keeps arrival order and drops nothing', async () => {
+    const out = await runContentSearch(fakeClient([cookie, cookieSnip, other, vorkurs]), {
+      types: ['article', 'resource'],
+    });
+    expect(out.results.map((r) => r.title)).toEqual([
+      'Cookie Policy (EU)', 'Kekse backen', 'Vorkurs Mathematik "11 Stochastik"',
+    ]);
+    expect(out.results[0].lexical).toBeUndefined();
   });
 });

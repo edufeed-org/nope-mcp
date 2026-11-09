@@ -10,10 +10,10 @@ import { READ_ONLY } from './annotations.js';
 import { eventHasOpenLicense } from '../license/open.js';
 import { LICENSE_TEXT, type LicenseFilter } from '../license/classify.js';
 
-/** Decode an naddr into a d-tag + author + kind for getByDTag; null on malformed/non-naddr input. */
+/** Decode an naddr into a d-tag + author + kind (+ relay hints) for getByDTag; null on malformed/non-naddr input. */
 export function naddrToLookup(
   naddr: string
-): { identifier: string; author: string; kind: number } | null {
+): { identifier: string; author: string; kind: number; relays: string[] } | null {
   try {
     const decoded = nip19.decode(naddr);
     if (decoded.type !== 'naddr') return null;
@@ -21,6 +21,7 @@ export function naddrToLookup(
       identifier: decoded.data.identifier,
       author: decoded.data.pubkey,
       kind: decoded.data.kind,
+      relays: decoded.data.relays ?? [],
     };
   } catch {
     return null;
@@ -201,13 +202,23 @@ export function registerGetTool(
           .describe(
             'Restrict the lookup to specific relays — pass the relays a search found the ' +
               'result on. Only relays returned by list_relays (default or extra) are ' +
-              'accepted, by full URL or short name (e.g. "oersi"). Default: the default relay set.'
+              'accepted, by full URL or short name (e.g. "oersi"). Default: the naddr\'s relay ' +
+              'hints that list_relays knows, else the default relay set.'
           ),
       },
       annotations: READ_ONLY,
     },
     async (params) => {
-      const selection = resolveRelaysOrError(client, params.relays);
+      // Without a `relays` selection, the naddr's relay hints — only those this server knows.
+      const hints = params.relays?.length || !params.naddr ? [] : naddrToLookup(params.naddr)?.relays ?? [];
+      const known = hints.filter((r) => {
+        try {
+          return client.resolveRelays([r]).length > 0;
+        } catch {
+          return false;
+        }
+      });
+      const selection = resolveRelaysOrError(client, known.length ? known : params.relays);
       if ('errorPayload' in selection) {
         return { content: [{ type: 'text', text: JSON.stringify(selection.errorPayload) }] };
       }

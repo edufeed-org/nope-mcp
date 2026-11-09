@@ -2,6 +2,7 @@ import { SimplePool, type Filter, type NostrEvent } from 'nostr-tools';
 import { normalizeURL } from 'nostr-tools/utils';
 import WebSocket from 'ws';
 import { namesFor } from './catalog.js';
+import { makeEventCollector } from './provenance.js';
 
 // Node 20 (the production runtime image) has no global WebSocket.
 // SimplePool from `nostr-tools` root reads its websocketImplementation from a
@@ -367,8 +368,8 @@ export class AMBRelayClient {
       (standardFilter as Record<string, unknown>)[key] = value;
     }
 
-    const events: NostrEvent[] = [];
-    const seen = new Set<string>();
+    const collector = makeEventCollector();
+    const events = collector.events;
     let pendingRelays: number;
     // Per-relay outcome, hoisted so the diagnostics can be read after the
     // race resolves (success OR lenient timeout): unreachable = refused a
@@ -438,12 +439,7 @@ export class AMBRelayClient {
           // before this method's real deadline.
           const sub = relay.prepareSubscription([filter], {
             eoseTimeout: this.queryTimeoutMs,
-            onevent: (event: NostrEvent) => {
-              if (!seen.has(event.id)) {
-                seen.add(event.id);
-                events.push(event);
-              }
-            },
+            onevent: (event: NostrEvent) => collector.onevent(event, url),
             oneose: () => {
               sub.close('eose');
               settleRelay(url);
@@ -517,8 +513,13 @@ export class AMBRelayClient {
     // partial state. `events` is pushed to as onevent fires, so it already
     // holds whatever arrived before the deadline when the timeout wins the
     // race below.
-    const events: NostrEvent[] = [];
-    const seen = new Set<string>();
+    const collector = makeEventCollector();
+    const events = collector.events;
+    // The merged subscription's onevent has no relay; nostr-tools calls
+    // receivedEvent(relay, id) right before it, for every arrival.
+    const firstRelay = new Map<string, string>();
+    // nostr-tools reports relay.url normalized (trailing slash); map it back to the configured spelling.
+    const configured = new Map(relays.map((r) => [normalizeForMatch(r) ?? r, r]));
     let timedOut = false;
 
     await new Promise<void>((resolve) => {
@@ -533,12 +534,14 @@ export class AMBRelayClient {
         // AbstractSimplePool's own maxWaitForConnection/maxWait handling,
         // which is an acceptable trade-off for not truncating slow relays.)
         maxWait: timeoutMs,
-        onevent: (event: NostrEvent) => {
-          if (!seen.has(event.id)) {
-            seen.add(event.id);
-            events.push(event);
-          }
-        },
+        onevent: (event: NostrEvent) => collector.onevent(event, firstRelay.get(event.id)),
+        // Not in subscribeManyEose's declared params, but subscribeMap spreads
+        // them into every relay.subscribe, which honors it at runtime.
+        ...({
+          receivedEvent: (relay: { url: string }, id: string) => {
+            if (!firstRelay.has(id)) firstRelay.set(id, configured.get(normalizeForMatch(relay.url) ?? relay.url) ?? relay.url);
+          },
+        } as object),
         onclose: () => {
           clearTimeout(timer);
           resolve();

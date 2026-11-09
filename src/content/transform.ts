@@ -14,6 +14,7 @@ import type {
   PublicationResult,
 } from './types.js';
 import { licenseTagValue } from '../license/tag.js';
+import { getEventRelay } from '../relay/provenance.js';
 
 const EXCERPT_MAX = 300;
 
@@ -72,7 +73,7 @@ function articleToContentResult(event: NostrEvent): ArticleResult | null {
   const d = tag(event, 'd');
   const title = tag(event, 'title');
   if (!d || !title) return null;
-  const { naddr, url } = encodeNaddrAndUrl(event.kind, event.pubkey, d);
+  const { naddr, url } = encodeNaddrAndUrl(event.kind, event.pubkey, d, getEventRelay(event));
   const publishedAtRaw = tag(event, 'published_at');
   const topics = tagValues(event, 't');
   const result: ArticleResult = {
@@ -102,7 +103,7 @@ function wikiToContentResult(event: NostrEvent): WikiResult | null {
   if (!d) return null;
   // Fall back to summary, then d-tag value so title is always non-empty.
   const title = tag(event, 'title') ?? tag(event, 'summary') ?? d;
-  const { naddr, url } = encodeNaddrAndUrl(event.kind, event.pubkey, d);
+  const { naddr, url } = encodeNaddrAndUrl(event.kind, event.pubkey, d, getEventRelay(event));
   const topics = tagValues(event, 't');
   const result: WikiResult = {
     type: 'wiki',
@@ -135,7 +136,7 @@ function transferkioskToContentResult(
   const d = tag(event, 'd');
   const name = tag(event, 'name');
   if (!d || !name) return null;
-  const { naddr, url } = encodeNaddrAndUrl(event.kind, event.pubkey, d);
+  const { naddr, url } = encodeNaddrAndUrl(event.kind, event.pubkey, d, getEventRelay(event));
   const result = {
     type,
     kind,
@@ -177,7 +178,7 @@ function publicationToContentResult(event: NostrEvent): PublicationResult | null
   const d = tag(event, 'd');
   const title = tag(event, 'title');
   if (!d || !title) return null;
-  const { naddr, url } = encodeNaddrAndUrl(event.kind, event.pubkey, d);
+  const { naddr, url } = encodeNaddrAndUrl(event.kind, event.pubkey, d, getEventRelay(event));
   const result: PublicationResult = {
     type: 'publication',
     kind: event.kind as 30040 | 30041,
@@ -262,8 +263,10 @@ export function transformContentEvent(
   event: NostrEvent,
   language = 'de'
 ): SimplifiedContentResult | null {
-  const fn = CONTENT_TRANSFORMS[event.kind];
-  return fn ? fn(event, language) : null;
+  const result = CONTENT_TRANSFORMS[event.kind]?.(event, language) ?? null;
+  const relay = getEventRelay(event);
+  if (result && relay) result.relay = relay;
+  return result;
 }
 
 export function transformContentEvents(

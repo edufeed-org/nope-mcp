@@ -8,6 +8,32 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ### Added
 
+- `resolve_author` candidates include `picture`.
+- Results carry `relay`, the configured URL of the relay they came from
+  (search_content, search_resources, find_community, and released
+  search_passages passages); ranked results carry a new `lexical` field.
+- search_passages now searches every selected relay that has a passage
+  index (not just the first) and merges the hits, sorted by score desc,
+  deduplicated by `chunk_id`, before the per-document cap and `limit`; new
+  `relaysSearched` and `relaysIncomplete` (relays whose indexer rejected the
+  request or did not answer within `INDEXER_TIMEOUT_MS`, default 15000)
+  fields, alongside the existing `relaySearched` (kept for compatibility:
+  the first relay that answered). Each `metadataOnlyMatches` naddr hints the
+  relay its hit actually came from. Scope materialization (tag/search/
+  community spells) still runs against the primary relay only.
+- New `find_community` tool: free-text matches a topic against Communikey
+  community definitions (kind 10222) by name/description (lexical score,
+  same ranking helper as search_content), for "welche Community beschäftigt
+  sich mit …" questions. Per the Communikey spec ("Communities = npubs"),
+  `name`/`picture` are resolved from the community pubkey's own kind-0
+  profile (one batched query alongside the 10222 list) — `description` is
+  the 10222's own override tag, falling back to the kind-0 `about`.
+  Returns `{pubkey, npub, name, description, picture?, relay?}` per match —
+  `pubkey` can be passed as the `community` parameter of
+  `search_content`/`search_calendar_events`. Reads from the new
+  `COMMUNITY_RELAYS` env var (comma-separated; unset disables the tool), a
+  5-minute in-memory stale-while-revalidate cache per process; reports
+  `relaysIncomplete`/`warning` when a community relay did not finish.
 - `search_calendar_events` returns NIP-52 time semantics the model no longer
   has to know: `effectiveEnd` (Unix seconds when the event is over — an
   end-less 31923 ends at its start, an end-less 31922 is a one-day event,
@@ -49,9 +75,44 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
   edufeed-app) hides bulk calendar sources from `search_calendar_events` by
   default; the response reports `hiddenSources` and `includeHiddenSources:
   true` returns them. A `bot` flag alone hides nothing.
+- search_content / search_resources without any relay search (no query, no
+  field filter) return the newest results across all relays again instead
+  of interleaving relays round-robin.
+- `query` of find_community, search_content and search_resources is capped
+  at 500 characters, and ranking tokenizes the query once per call instead
+  of once per result (a long query no longer blocks the process).
+- get_resource without `relays` looks an naddr up on its relay hints (only
+  relays list_relays knows; otherwise the default set as before) instead of
+  ignoring them.
+- find_community keeps its cached list when a background refresh is partial
+  (a community relay timed out or was unreachable) instead of dropping that
+  relay's communities for the next 5 minutes.
+- An invalid `INDEXER_TIMEOUT_MS` (not a positive number) fails at startup
+  with a clear error instead of silently disabling or breaking the timeout.
+- Relay queries keep only the newest replaceable event (kinds 0, 3,
+  10000–19999) per author across relays, as they already did for
+  addressable kinds; search_passages hits carry their source relay as a
+  plain field (internal cleanup, same output).
 
 ### Changed
 
+- `limit` now applies to the merged list across relays (search_content,
+  search_resources, search_passages), not per relay.
+- search_content/search_resources re-order results by `(score ?? 0) +
+  lexical` (relay snippet score + a lexical title/description match; 2-char
+  all-caps acronyms like KI count), with each item's position in its own
+  relay's order as tiebreak — so relays interleave round-robin on ties and
+  for queries without words. This applies with a single relay too.
+  Zero-match hits sort last, never dropped.
+- **naddr strings now carry the source relay as hint**, so the same resource
+  may yield different naddr strings per relay — dedupe/cache by the decoded
+  coordinate (`kind:pubkey:d`), not by the naddr string.
+- Addressable events are deduplicated by coordinate (newest `created_at`
+  wins) in every query path.
+- search_passages across several relays, when every relay fails: SpellError
+  failures become one `{error: "indexer_error"}` whose message names each
+  relay; any other failure is thrown (a tool error) instead of returning
+  `{error}`.
 - License classification reads ALL `license:id` tags of a learning resource
   (falling back to the plain `license` tag) and follows the shared
   amb-mcp/amb-indexer contract: DINI AG KIM license-type concepts

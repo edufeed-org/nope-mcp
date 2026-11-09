@@ -17,6 +17,8 @@ export interface PassageHit {
   /** Indexer tier for 30142 hits; `metadata-only` hits carry no text, snippet, heading, section_path or page. */
   access_level?: 'full' | 'metadata-only';
   amb?: Record<string, unknown>;
+  /** Relay whose indexer answered (set by search_passages' fan-out, not by the indexer). */
+  relay?: string;
 }
 
 /**
@@ -51,6 +53,20 @@ function parsePairs(spec: string, envName: string, what: string): Map<string, st
   }
   return map;
 }
+
+/** `INDEXER_TIMEOUT_MS`, default 15000; an invalid value fails at startup (as RELAY_QUERY_TIMEOUT_MS). */
+export function parseIndexerTimeoutMs(env: { INDEXER_TIMEOUT_MS?: string }): number {
+  const raw = env.INDEXER_TIMEOUT_MS?.trim();
+  if (!raw) return 15_000;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`Invalid INDEXER_TIMEOUT_MS "${env.INDEXER_TIMEOUT_MS}": expected a positive number of milliseconds.`);
+  }
+  return n;
+}
+
+/** Per-request cap so a hung indexer lands in relaysIncomplete instead of stalling the call. */
+export const INDEXER_TIMEOUT_MS = parseIndexerTimeoutMs(process.env);
 
 /** Maps AMB relays to their amb-indexer /search_chunks endpoints. */
 export class IndexerClient {
@@ -107,12 +123,29 @@ export class IndexerClient {
     if (!bearer) {
       throw new SpellError('indexer_error', `no API token configured for indexer at ${base}`);
     }
+    // setTimeout-based (not AbortSignal.timeout) so fake timers can drive it in tests.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error(`timed out after ${INDEXER_TIMEOUT_MS}ms`)), INDEXER_TIMEOUT_MS);
+    try {
+      return await this.request(base, bearer, body, controller.signal);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async request(
+    base: string,
+    bearer: string,
+    body: unknown,
+    signal: AbortSignal
+  ): Promise<{ hits: PassageHit[]; total: number }> {
     let res: Response;
     try {
       res = await this.fetchImpl(`${base}/search_chunks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${bearer}` },
         body: JSON.stringify(body),
+        signal,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

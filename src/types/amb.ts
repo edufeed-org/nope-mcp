@@ -54,6 +54,8 @@ export interface AMBResourceWithMetadata {
     createdAt: number;
     dTag: string;
     sig: string;
+    /** Relay this event was taken from, when known. */
+    relay?: string;
   };
   /**
    * ALL license values of the event (licenseTagValues: every `license:id`,

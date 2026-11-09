@@ -8,6 +8,7 @@ import {
 } from './relaySelection.js';
 import { buildFilter, type SearchParams } from '../relay/filters.js';
 import { eventsToAMBResources, toSimplifiedResource, type SimplifiedAMBResource } from '../utils/transform.js';
+import { rankResults } from '../content/rank.js';
 import { findActorCandidates, type ActorCandidate } from './resolvePublisher.js';
 import { READ_ONLY } from './annotations.js';
 import {
@@ -60,15 +61,16 @@ export async function runResourceSearch(
   // without a relay license filter (keeps chunk rerank), so this is the
   // filter; a pure field-filter search carried license.id filters and this is
   // the safety net for spellings missing from OPEN_LICENSE_URIS /
-  // CC_LICENSE_URIS. Relay order is preserved.
+  // CC_LICENSE_URIS.
   const events =
     effective === 'any'
       ? fetched
-      : fetched.filter((e) => matchesLicenseFilter(eventLicense(e).group, effective)).slice(0, limit);
+      : fetched.filter((e) => matchesLicenseFilter(eventLicense(e).group, effective));
 
   const resources = eventsToAMBResources(events);
   const lang = params.language || 'de';
-  const simplified = resources.map((r) => toSimplifiedResource(r, lang));
+  // One ranked list across relays (lexical match; relay order breaks ties), `limit` after the merge.
+  const simplified = rankResults(resources.map((r) => toSimplifiedResource(r, lang)), params.query, limit, !search);
   const result: ResourceSearchResult = {
     total: simplified.length,
     resources: simplified,
@@ -77,7 +79,7 @@ export async function runResourceSearch(
     ...(clamped ? { licenseFilterClamped: true as const } : {}),
   };
 
-  if (simplified.length === 0) {
+  if (resources.length === 0) {
     // Was the empty result caused ONLY by the license filter (otherwise-
     // matching resources existed but were excluded), or did nothing match at
     // all? A pure field-filter/browse search already carried license.id
@@ -168,6 +170,7 @@ export function registerSearchTool(
       inputSchema: {
         query: z
           .string()
+          .max(500)
           .optional()
           .describe('Free-text search query (e.g., "mathematik", "machine learning")'),
         publisherName: z

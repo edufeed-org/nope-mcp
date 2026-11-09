@@ -8,6 +8,7 @@ export interface ProfileResult {
   name?: string;
   nip05?: string;
   about?: string;
+  picture?: string;
 }
 
 /**
@@ -30,6 +31,7 @@ export function transformProfileEvent(event: NostrEvent): ProfileResult | null {
   if (name) result.name = name;
   if (content.nip05) result.nip05 = content.nip05;
   if (content.about) result.about = content.about;
+  if (typeof content.picture === 'string' && content.picture) result.picture = content.picture;
 
   return result;
 }

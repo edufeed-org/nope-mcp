@@ -7,6 +7,7 @@ import {
 import { buildContentFilter, type ContentSearchParams } from '../relay/filters.js';
 import { transformContentEvent } from '../content/transform.js';
 import { parseSnippets, attachSnippets, SNIPPET_KIND } from '../content/snippet.js';
+import { rankResults } from '../content/rank.js';
 import type { SimplifiedContentResult, ResourceResult } from '../content/types.js';
 import { READ_ONLY } from './annotations.js';
 import {
@@ -25,7 +26,8 @@ const RELAY_MAX_LIMIT = 250;
 /**
  * Run a cross-content search: one relay-ranked REQ over the selected content
  * kinds (+ 21142), partition out the snippet events, transform the content
- * events in arrival order, and attach each matched passage to its parent.
+ * events in arrival order, attach each matched passage to its parent, then
+ * rank across relays (snippet score + lexical match, see rankResults).
  * licenseFilter (narrowed to the server's licenseFilterMax ceiling) drops
  * learning resources (30142) outside the requested tier; every other kind
  * passes unfiltered. A metadata-only resource never keeps a snippet/page/
@@ -63,7 +65,6 @@ export async function runContentSearch(
   const results: SimplifiedContentResult[] = [];
   const keptEvents = [];
   for (const e of events) {
-    if (filterResources && results.length >= limit) break;
     if (e.kind === SNIPPET_KIND) continue;
     if (filterResources && e.kind === 30142 && !matchesLicenseFilter(eventLicense(e).group, effective)) continue;
     const r = transformContentEvent(e, language);
@@ -106,9 +107,12 @@ export async function runContentSearch(
     }
   }
 
+  // One ranked list across relays; `limit` applies after the merge.
+  const ranked = rankResults(results, params.query, limit, !filter.search);
+
   return {
-    total: results.length,
-    results,
+    total: ranked.length,
+    results: ranked,
     ...relayDiagnosticsFields(diag),
     licenseFilter: effective,
     ...(clamped ? { licenseFilterClamped: true as const } : {}),
@@ -171,6 +175,7 @@ export function registerSearchContentTool(
       inputSchema: {
         query: z
           .string()
+          .max(500)
           .optional()
           .describe(
             'Free-text topic (e.g., "Unaufmerksamkeit im Seminar"). Keep it to the TOPIC ' +
@@ -201,7 +206,7 @@ export function registerSearchContentTool(
           .optional()
           .describe(
             'Return content shared into this community (Communikey). Accepts a hex pubkey or npub. ' +
-              'Resolve a community name to its pubkey with resolve_author. Combine with query to ' +
+              'Resolve a community name with find_community (when available) or resolve_author. Combine with query to ' +
               'scope a topic to a community (e.g. "math resources shared with X").',
           ),
         licenseFilter: z

@@ -55,4 +55,30 @@ describe('transformProfileEvent', () => {
   it('returns null for a non-kind-0 event', () => {
     expect(transformProfileEvent(profileEvent(JSON.stringify({ name: 'x' }), 1))).toBeNull();
   });
+
+  it('includes picture when it is a non-empty string', () => {
+    const ev = profileEvent(
+      JSON.stringify({
+        name: 'test',
+        picture: 'https://example.com/pic.jpg',
+      })
+    );
+    const r = transformProfileEvent(ev);
+    expect(r?.picture).toBe('https://example.com/pic.jpg');
+  });
+
+  it('omits a non-string picture', () => {
+    const r = transformProfileEvent(profileEvent(JSON.stringify({ name: 'x', picture: 7 })));
+    expect(r).not.toHaveProperty('picture');
+  });
+
+  it('omits picture when it is absent', () => {
+    const r = transformProfileEvent(profileEvent(JSON.stringify({ name: 'test' })));
+    expect(r).not.toHaveProperty('picture');
+  });
+
+  it('omits picture when it is an empty string', () => {
+    const r = transformProfileEvent(profileEvent(JSON.stringify({ name: 'test', picture: '' })));
+    expect(r).not.toHaveProperty('picture');
+  });
 });

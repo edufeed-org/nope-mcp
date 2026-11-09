@@ -1,5 +1,6 @@
 import type { NostrEvent } from 'nostr-tools';
 import { encodeNaddrAndUrl } from '../utils/transform.js';
+import { getEventRelay } from '../relay/provenance.js';
 import type { CalendarAuthorInfo } from './authorInfo.js';
 
 export interface CalendarEventParticipant {
@@ -80,6 +81,8 @@ export interface CalendarEvent {
   author?: CalendarAuthorInfo;
   /** NIP-19 naddr for this addressable event; omitted on encoding failure. */
   naddr?: string;
+  /** Relay this event was taken from, when known (also the naddr's relay hint). */
+  relay?: string;
   /** edufeed-app viewer URL (`<base>/<naddr>`); present only when EDUFEED_APP_BASE_URL is set. */
   url?: string;
   nostr: {
@@ -297,8 +300,10 @@ export function eventToCalendarEvent(event: NostrEvent): CalendarEvent | null {
     },
   };
 
-  const { naddr, url } = encodeNaddrAndUrl(event.kind, event.pubkey, identifier);
+  const { naddr, url } = encodeNaddrAndUrl(event.kind, event.pubkey, identifier, getEventRelay(event));
   if (naddr) result.naddr = naddr;
+  const relay = getEventRelay(event);
+  if (relay) result.relay = relay;
   if (url) result.url = url;
 
   // Optional fields — only include if present
@@ -361,6 +366,8 @@ export interface CalendarCollection {
   /** Coordinates (`31922|31923:<pubkey>:<d>`) of the events in this calendar, in tag order. */
   eventRefs: string[];
   naddr?: string;
+  /** Relay this event was taken from, when known (also the naddr's relay hint). */
+  relay?: string;
   url?: string;
   nostr: { eventId: string; pubkey: string; createdAt: number };
 }
@@ -378,8 +385,10 @@ export function eventToCalendarCollection(event: NostrEvent): CalendarCollection
     nostr: { eventId: event.id, pubkey: event.pubkey, createdAt: event.created_at },
   };
   if (event.content) result.description = event.content;
-  const { naddr, url } = encodeNaddrAndUrl(event.kind, event.pubkey, identifier);
+  const { naddr, url } = encodeNaddrAndUrl(event.kind, event.pubkey, identifier, getEventRelay(event));
   if (naddr) result.naddr = naddr;
+  const relay = getEventRelay(event);
+  if (relay) result.relay = relay;
   if (url) result.url = url;
   return result;
 }
@@ -401,6 +410,8 @@ export interface CalendarRsvp {
   eventAuthor?: string;
   note?: string;
   naddr?: string;
+  /** Relay this event was taken from, when known (also the naddr's relay hint). */
+  relay?: string;
   nostr: { eventId: string; pubkey: string; createdAt: number };
 }
 
@@ -432,8 +443,10 @@ export function eventToRsvp(event: NostrEvent): CalendarRsvp | null {
   const eventAuthor = getTagValue(event, 'p');
   if (eventAuthor) result.eventAuthor = eventAuthor;
   if (event.content) result.note = event.content;
-  const { naddr } = encodeNaddrAndUrl(event.kind, event.pubkey, identifier);
+  const { naddr } = encodeNaddrAndUrl(event.kind, event.pubkey, identifier, getEventRelay(event));
   if (naddr) result.naddr = naddr;
+  const relay = getEventRelay(event);
+  if (relay) result.relay = relay;
   return result;
 }
 

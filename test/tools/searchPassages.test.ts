@@ -3,8 +3,9 @@ import {
   runSearchPassages, registerSearchPassagesTool, sanitizeHintRelays, makeFetchSpellEvent, makeFetchContacts,
   MAX_HINT_RELAYS, CONTACTS_FALLBACK_RELAY, coordToNaddr,
 } from '../../src/tools/searchPassages.js';
-import { SPELL_KIND } from '../../src/spells/types.js';
+import { SPELL_KIND, SpellError } from '../../src/spells/types.js';
 import { RelayUnreachableError } from '../../src/relay/client.js';
+import { IndexerClient } from '../../src/indexer/client.js';
 import { nip19 } from 'nostr-tools';
 import type { Event as NostrEvent, Filter } from 'nostr-tools';
 
@@ -129,6 +130,126 @@ describe('runSearchPassages', () => {
       undefined
     );
     await expect(out).rejects.toMatchObject({ code: 'no_filter' });
+  });
+});
+
+describe('runSearchPassages — multi-relay fan-out', () => {
+  const R1 = 'wss://relay1.example';
+  const R2 = 'wss://relay2.example';
+  const R3 = 'wss://relay3.example';
+  const coordA = `30142:${'a'.repeat(64)}:a1`;
+  const coordB = `30142:${'b'.repeat(64)}:b1`;
+  const coordC = `30142:${'c'.repeat(64)}:c1`;
+  const mkHit = (coord: string, score: number) => ({ ...HIT, event_coord: coord, score, chunk_id: `${coord}:0` });
+
+  it('all relays answer: merges hits sorted by score desc and reports relaysSearched', async () => {
+    const searchChunks = vi.fn(async (relay: string) => {
+      if (relay === R1) return { hits: [mkHit(coordA, 0.5)], total: 1 };
+      if (relay === R2) return { hits: [mkHit(coordB, 0.9)], total: 1 };
+      return { hits: [mkHit(coordC, 0.7)], total: 1 };
+    });
+    const d = deps({ searchChunks, relay: R1, relays: [R1, R2, R3] });
+    const out = await runSearchPassages(d, { question: 'q', kinds: [30142] }, undefined);
+    expect(out.passages.map((p) => p.event_coord)).toEqual([coordB, coordC, coordA]);
+    expect(out.relaysSearched).toEqual([R1, R2, R3]);
+    expect(out).not.toHaveProperty('relaysIncomplete');
+  });
+
+  it('one relay rejects: returns the others and reports relaysIncomplete', async () => {
+    const searchChunks = vi.fn(async (relay: string) => {
+      if (relay === R1) return { hits: [mkHit(coordA, 0.5)], total: 1 };
+      if (relay === R2) throw new SpellError('indexer_error', 'boom');
+      return { hits: [mkHit(coordC, 0.7)], total: 1 };
+    });
+    const d = deps({ searchChunks, relay: R1, relays: [R1, R2, R3] });
+    const out = await runSearchPassages(d, { question: 'q', kinds: [30142] }, undefined);
+    expect(out.passages.map((p) => p.event_coord)).toEqual([coordC, coordA]);
+    expect(out.relaysSearched).toEqual([R1, R3]);
+    expect(out.relaysIncomplete).toEqual([R2]);
+  });
+
+  it('no relay has an indexer: old single-relay behaviour, surfacing the indexer error', async () => {
+    const searchChunks = vi.fn(async () => { throw new SpellError('no_indexer', 'no passage index configured for relay'); });
+    const d = deps({ searchChunks, relay: R1, relays: [R1] });
+    await expect(runSearchPassages(d, { question: 'q', kinds: [30142] }, undefined))
+      .rejects.toMatchObject({ code: 'no_indexer' });
+  });
+
+  it('all three relays reject with SpellErrors: throws one indexer_error SpellError naming every relay', async () => {
+    const searchChunks = vi.fn(async (relay: string) => { throw new SpellError('indexer_error', `boom at ${relay}`); });
+    const d = deps({ searchChunks, relay: R1, relays: [R1, R2, R3] });
+    const err = await runSearchPassages(d, { question: 'q', kinds: [30142] }, undefined).catch((e) => e);
+    expect(err).toBeInstanceOf(SpellError);
+    expect(err.code).toBe('indexer_error');
+    for (const r of [R1, R2, R3]) expect(err.message).toContain(r);
+  });
+
+  it('all relays reject and one is not a SpellError: throws an AggregateError', async () => {
+    const searchChunks = vi.fn(async (relay: string) => {
+      if (relay === R1) throw new Error('bug');
+      throw new SpellError('indexer_error', `boom at ${relay}`);
+    });
+    const d = deps({ searchChunks, relay: R1, relays: [R1, R2, R3] });
+    const err: AggregateError = await runSearchPassages(d, { question: 'q', kinds: [30142] }, undefined).catch((e) => e);
+    expect(err).toBeInstanceOf(AggregateError);
+    expect(err.message).toContain(R3);
+    expect(err.errors).toHaveLength(3);
+  });
+
+  it('released passages carry the relay they came from', async () => {
+    const searchChunks = vi.fn(async (relay: string) =>
+      relay === R2 ? { hits: [mkHit(coordB, 0.9)], total: 1 } : { hits: [mkHit(coordA, 0.5)], total: 1 }
+    );
+    const d = deps({ searchChunks, relay: R1, relays: [R1, R2] });
+    const out = await runSearchPassages(d, { question: 'q', kinds: [30142] }, undefined);
+    expect(out.passages.map((p) => [p.event_coord, p.relay])).toEqual([[coordB, R2], [coordA, R1]]);
+  });
+
+  it('dedupes the same chunk returned by two relays', async () => {
+    const searchChunks = vi.fn(async () => ({ hits: [mkHit(coordA, 0.5)], total: 1 }));
+    const d = deps({ searchChunks, relay: R1, relays: [R1, R2] });
+    const out = await runSearchPassages(d, { question: 'q', kinds: [30142] }, undefined);
+    expect(out.passages).toHaveLength(1);
+    expect(out.passages[0].relay).toBe(R1);
+  });
+
+  it('a hung indexer times out into relaysIncomplete; the other relays still answer', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchImpl = vi.fn((url: string, init: RequestInit) =>
+        url.startsWith('https://ix2')
+          ? new Promise<Response>((_, reject) => init.signal?.addEventListener('abort', () => reject(init.signal!.reason)))
+          : Promise.resolve(new Response(JSON.stringify({ hits: [mkHit(coordA, 0.5)], total: 1 }), { status: 200 }))
+      );
+      const indexer = new IndexerClient(
+        new Map([[R1, 'https://ix1'], [R2, 'https://ix2']]), 'tok', fetchImpl as unknown as typeof fetch
+      );
+      const d = deps({ searchChunks: (r, b) => indexer.searchChunks(r, b), relay: R1, relays: [R1, R2] });
+      const pending = runSearchPassages(d, { question: 'q', kinds: [30142] }, undefined);
+      await vi.advanceTimersByTimeAsync(15_000);
+      const out = await pending;
+      expect(out.relaysSearched).toEqual([R1]);
+      expect(out.relaysIncomplete).toEqual([R2]);
+      expect(out.passages).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('naddrs in metadataOnlyMatches hint the relay the hit actually came from, not the primary relay', async () => {
+    const restricted = {
+      chunk_id: `${coordA}:0`, event_id: 'e', event_coord: coordA, chunk_idx: 0, score: 0.5,
+      snippet: '', access_level: 'metadata-only' as const,
+      amb: { license: 'https://de.wikipedia.org/wiki/Urheberrecht_(Deutschland)' },
+    };
+    const searchChunks = vi.fn(async (relay: string) =>
+      relay === R2 ? { hits: [restricted], total: 1 } : { hits: [], total: 0 }
+    );
+    const d = deps({ searchChunks, relay: R1, relays: [R1, R2] });
+    const out = await runSearchPassages(d, { question: 'q', kinds: [30142] }, undefined);
+    expect(out.metadataOnlyMatches).toHaveLength(1);
+    const decoded = nip19.decode(out.metadataOnlyMatches[0].naddr);
+    expect(decoded).toMatchObject({ data: { relays: [R2] } });
   });
 });
 
@@ -428,6 +549,19 @@ describe('search_passages description', () => {
 
   it('names the ceiling when it is below any', () => {
     expect(description('open')).toContain("This server limits results to licenseFilter 'open'.");
+  });
+
+  it('describes the relays param as a multi-relay fan-out, not a single mapped relay', () => {
+    let relaysDescription = '';
+    const server = {
+      registerTool: (_name: string, cfg: { inputSchema?: Record<string, { description?: string }> }) => {
+        relaysDescription = cfg.inputSchema?.relays?.description ?? '';
+      },
+    } as unknown as Parameters<typeof registerSearchPassagesTool>[0];
+    const none = {} as never;
+    registerSearchPassagesTool(server, none, none, none, {});
+    expect(relaysDescription).toContain('Every selected relay with a passage index is searched and the results merged.');
+    expect(relaysDescription).not.toContain('First mapped relay is used.');
   });
 });
 

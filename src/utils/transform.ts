@@ -4,6 +4,7 @@ import type { AMBResourceWithMetadata } from '../types/amb.js';
 import { getLabel } from '../skos/parser.js';
 import { classifyLicenses, accessLevelFor, type AccessLevel, type LicenseInfo } from '../license/classify.js';
 import { licenseTagValue, licenseTagValues } from '../license/tag.js';
+import { getEventRelay } from '../relay/provenance.js';
 
 /**
  * Base URL of the edufeed-app frontend. When set, `toSimplifiedResource`
@@ -22,10 +23,11 @@ const EDUFEED_APP_BASE_URL = process.env.EDUFEED_APP_BASE_URL?.replace(/\/+$/, '
 export function encodeNaddrAndUrl(
   kind: number,
   pubkey: string,
-  dTag: string
+  dTag: string,
+  relay?: string
 ): { naddr?: string; url?: string } {
   try {
-    const naddr = nip19.naddrEncode({ kind, pubkey, identifier: dTag, relays: [] });
+    const naddr = nip19.naddrEncode({ kind, pubkey, identifier: dTag, relays: relay ? [relay] : [] });
     const url = EDUFEED_APP_BASE_URL ? `${EDUFEED_APP_BASE_URL}/${naddr}` : undefined;
     return { naddr, url };
   } catch {
@@ -180,6 +182,7 @@ export function eventToAMBResource(event: NostrEvent): AMBResourceWithMetadata |
         createdAt: event.created_at,
         dTag,
         sig: event.sig,
+        ...(getEventRelay(event) ? { relay: getEventRelay(event) } : {}),
       },
     };
   } catch (error) {
@@ -215,7 +218,7 @@ export function toSimplifiedResource(ambResource: AMBResourceWithMetadata, langu
   // EDUFEED_APP_BASE_URL is configured. Both are optional in the response —
   // if encoding fails or the env var is unset, callers still get a usable
   // result without the link fields.
-  const { naddr, url } = encodeNaddrAndUrl(nostr.kind, nostr.pubkey, nostr.dTag);
+  const { naddr, url } = encodeNaddrAndUrl(nostr.kind, nostr.pubkey, nostr.dTag, nostr.relay);
 
   // The resource's original source page: the first http(s) mainEntityOfPage
   // (from the event's `r` tag), falling back to an http(s) d-tag id.
@@ -236,6 +239,7 @@ export function toSimplifiedResource(ambResource: AMBResourceWithMetadata, langu
     description: resource.description,
     url,
     sourcePage,
+    ...(nostr.relay ? { relay: nostr.relay } : {}),
 
     // Educational metadata — resolved to single-language strings
     learningResourceType: resource.learningResourceType
@@ -297,6 +301,12 @@ export interface SimplifiedAMBResource {
    * LLMs should prefer this over `url` (the edufeed viewer) when citing.
    */
   sourcePage?: string;
+
+  /** Relay this resource was taken from, when known (also the naddr's relay hint). */
+  relay?: string;
+
+  /** Lexical title/description match of the query (0–1), present on free-text searches. */
+  lexical?: number;
 
   learningResourceType?: string[];
   educationalLevel?: string[];

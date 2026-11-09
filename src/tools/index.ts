@@ -25,6 +25,7 @@ import { registerCalendarTools } from './calendar.js';
 import { registerExtractTool } from './extract.js';
 import { registerSearchContentTool } from './searchContent.js';
 import { registerSearchPassagesTool } from './searchPassages.js';
+import { registerFindCommunityTool } from './findCommunity.js';
 import type { IndexerClient } from '../indexer/client.js';
 import type { LicenseFilter } from '../license/classify.js';
 
@@ -51,6 +52,8 @@ export function registerTools(
     indexer?: IndexerClient;
     /** Operator ceiling for search license filtering (LICENSE_FILTER_MAX, default any). */
     licenseFilterMax?: LicenseFilter;
+    /** Community relay client (COMMUNITY_RELAYS); find_community registers only when set. */
+    communityClient?: AMBRelayClient;
   },
 ): void {
   if (profile.read) {
@@ -71,6 +74,7 @@ export function registerTools(
     registerResolveAuthorTool(server, client);
     registerResolvePublisherTool(server, client);
     if (calendarClient) registerCalendarTools(server, calendarClient);
+    if (options?.communityClient) registerFindCommunityTool(server, options.communityClient);
     if (options?.indexer && options?.spellClient) {
       registerSearchPassagesTool(server, client, options.spellClient, options.indexer, { licenseFilterMax });
     }

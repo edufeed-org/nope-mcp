@@ -6,7 +6,7 @@ import type { NostrEvent } from 'nostr-tools';
 function resourceEvent(id: string, publisher?: string, license?: string | string[]): NostrEvent {
   const tags: string[][] = [
     ['d', `d-${id}`],
-    ['name', `Resource ${id}`],
+    ['name', `Mathe Resource ${id}`],
   ];
   for (const l of license === undefined ? [] : [license].flat()) tags.push(['license:id', l]);
   if (publisher) {
@@ -380,5 +380,31 @@ describe('search_resources description', () => {
 
   it('names the ceiling when it is below any', async () => {
     expect(await description('cc-any')).toContain("This server limits results to licenseFilter 'cc-any'.");
+  });
+});
+
+describe('runResourceSearch cross-relay ranking', () => {
+  const named = (id: string, name: string): NostrEvent => ({
+    ...resourceEvent(id),
+    tags: [['d', `d-${id}`], ['name', name]],
+  });
+
+  it('ranks by lexical match, zero-match last, and applies limit after the sort', async () => {
+    const all = await runResourceSearch(
+      fakeClient([named('a', 'Kekse'), named('c', 'Vorkurs Physik'), named('b', 'Mathe Vorkurs')]),
+      { query: 'Mathe Vorkurs' }
+    );
+    expect(all.resources.map((r) => r.id)).toEqual(['d-b', 'd-c', 'd-a']);
+    const client = fakeClient([named('a', 'Kekse'), named('c', 'Vorkurs Physik'), named('b', 'Mathe Vorkurs')]);
+    const out = await runResourceSearch(client, { query: 'Mathe Vorkurs', limit: 1 });
+    expect(out.resources.map((r) => r.id)).toEqual(['d-b']);
+    expect(out.resources[0].lexical).toBe(1);
+    expect(out.total).toBe(1);
+  });
+
+  it('field-only search keeps relay order and drops nothing', async () => {
+    const client = fakeClient([named('a', 'Kekse'), named('b', 'Mathe')]);
+    const out = await runResourceSearch(client, { publisherName: 'X' });
+    expect(out.resources.map((r) => r.id)).toEqual(['d-a', 'd-b']);
   });
 });

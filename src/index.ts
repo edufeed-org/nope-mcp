@@ -34,6 +34,8 @@ const RELAYS = process.env.RELAYS?.split(',') || [
   'wss://cvm.otherstuff.ai',
 ];
 const SPELL_RELAYS = process.env.SPELL_RELAYS?.split(',').filter(Boolean) || ['wss://relay.edufeed.org'];
+// Unset → undefined (no default): find_community stays unregistered.
+const COMMUNITY_RELAYS = process.env.COMMUNITY_RELAYS?.split(',').filter(Boolean);
 const indexer = IndexerClient.fromEnv(process.env.INDEXER_ENDPOINTS, process.env.INDEXER_API_TOKEN, process.env.INDEXER_API_TOKENS);
 const LICENSE_FILTER_MAX = parseLicenseFilterMax(process.env);
 
@@ -49,6 +51,7 @@ async function main() {
   console.log(`AMB Relays: ${AMB_RELAYS.join(', ')}`);
   if (AMB_EXTRA_RELAYS.length) console.log(`AMB Extra Relays: ${AMB_EXTRA_RELAYS.join(', ')}`);
   console.log(`Calendar Relays: ${CALENDAR_RELAYS.join(', ')}`);
+  if (COMMUNITY_RELAYS?.length) console.log(`Community Relays: ${COMMUNITY_RELAYS.join(', ')}`);
   console.log(`ContextVM Relays: ${RELAYS.join(', ')}`);
 
   // Initialize AMB relay client
@@ -59,6 +62,9 @@ async function main() {
 
   // Spell relay client (kind-777 spells + kind-3 contact lists for search_passages)
   const spellClient = new AMBRelayClient(SPELL_RELAYS);
+
+  // Community relay client (COMMUNITY_RELAYS, optional); unset → find_community absent
+  const communityClient = COMMUNITY_RELAYS?.length ? new AMBRelayClient(COMMUNITY_RELAYS) : undefined;
 
   // Create MCP server
   const server = new McpServer(
@@ -71,6 +77,7 @@ async function main() {
     spellClient,
     indexer: indexer ?? undefined,
     licenseFilterMax: LICENSE_FILTER_MAX,
+    communityClient,
   });
   registerResources(server, ambClient);
 
@@ -140,6 +147,7 @@ async function main() {
     ambClient.close();
     calendarClient.close();
     spellClient.close();
+    communityClient?.close();
     await server.close();
     process.exit(0);
   });
@@ -149,6 +157,7 @@ async function main() {
     ambClient.close();
     calendarClient.close();
     spellClient.close();
+    communityClient?.close();
     await server.close();
     process.exit(0);
   });

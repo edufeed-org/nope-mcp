@@ -62,7 +62,7 @@ export const RESOURCE_LICENSE_OVERFETCH_FACTOR = 3;
  * tokenizeSearch): split on spaces, a standalone "quoted phrase" is one
  * unquoted token, embedded "quoted" segments stay inside their token.
  */
-function tokenizeSearch(s: string): string[] {
+export function tokenizeSearch(s: string): string[] {
   const tokens: string[] = [];
   let i = 0;
   while (i < s.length) {
@@ -93,7 +93,7 @@ function tokenizeSearch(s: string): string[] {
 }
 
 /** Relay parseFieldFilter: `field:value` with a non-empty field and a non-empty (unquoted) value. */
-function isFieldFilterToken(token: string): boolean {
+export function isFieldFilterToken(token: string): boolean {
   const colon = token.indexOf(':');
   return colon > 0 && token.slice(colon + 1).replace(/^"+|"+$/g, '') !== '';
 }

@@ -32,6 +32,7 @@ export function buildSessionServer(
     spellClient?: AMBRelayClient;
     indexer?: IndexerClient;
     licenseFilterMax?: LicenseFilter;
+    communityClient?: AMBRelayClient;
   },
 ): SessionServer {
   const licenseFilterMax = options?.licenseFilterMax ?? 'any';
@@ -50,6 +51,7 @@ export function buildSessionServer(
     spellClient: options?.spellClient,
     indexer: options?.indexer,
     licenseFilterMax,
+    communityClient: options?.communityClient,
   });
   registerResources(server, ambClient);
 

@@ -142,7 +142,7 @@ function fakePool(impl: FakeSubscribeManyEose) {
 }
 
 function fakeEvent(id: string): NostrEvent {
-  return { id, pubkey: 'a'.repeat(64), created_at: 1700000000, kind: 30142, tags: [], content: '', sig: 's' };
+  return { id, pubkey: 'a'.repeat(64), created_at: 1700000000, kind: 30142, tags: [['d', id]], content: '', sig: 's' };
 }
 
 describe('queryRelays diagnostics (subscribeManyEose path, via query())', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { IndexerClient } from '../../src/indexer/client.js';
+import { IndexerClient, parseIndexerTimeoutMs } from '../../src/indexer/client.js';
 
 const SPEC = 'wss://relay.edufeed.org=https://indexer.edufeed.org, wss://oersi.edufeed.org=https://indexer.oersi.edufeed.org/';
 
@@ -140,5 +140,14 @@ describe('response shape validation', () => {
   it('defaults total to hits.length when absent', async () => {
     const res = await client({ hits: [{ event_coord: '30142:p:d', score: 1 }] }).searchChunks('wss://r', { q: 'q', k: 1, filter: {} });
     expect(res.total).toBe(1);
+  });
+});
+
+describe('parseIndexerTimeoutMs', () => {
+  it('defaults to 15000, accepts a positive number, rejects anything else', () => {
+    expect(parseIndexerTimeoutMs({})).toBe(15000);
+    expect(parseIndexerTimeoutMs({ INDEXER_TIMEOUT_MS: '5000' })).toBe(5000);
+    expect(() => parseIndexerTimeoutMs({ INDEXER_TIMEOUT_MS: '-5' })).toThrow(/INDEXER_TIMEOUT_MS/);
+    expect(() => parseIndexerTimeoutMs({ INDEXER_TIMEOUT_MS: 'abc' })).toThrow();
   });
 });
