@@ -125,7 +125,26 @@ const OAUTH_RESOURCE_URL =
 const HTTP_ALLOWED_HOSTS = process.env.HTTP_ALLOWED_HOSTS?.split(',').map((s) => s.trim()).filter(Boolean);
 const HTTP_ALLOWED_ORIGINS = process.env.HTTP_ALLOWED_ORIGINS?.split(',').map((s) => s.trim()).filter(Boolean);
 
+/**
+ * `SESSION_IDLE_MS`, default 30 minutes (same validation as
+ * `parseRelayQueryTimeoutMs`): stock MCP SDK clients don't re-initialise on
+ * the 404 an expired session gets, so humans in Claude Desktop/connectors
+ * need more idle room than a tool-call-driven client like edufeed-app.
+ */
+export function parseSessionIdleMs(env: { SESSION_IDLE_MS?: string }): number {
+  const raw = env.SESSION_IDLE_MS?.trim();
+  if (!raw) return 30 * 60_000;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(
+      `Invalid SESSION_IDLE_MS "${env.SESSION_IDLE_MS}": expected a positive number of milliseconds.`,
+    );
+  }
+  return n;
+}
+
 async function main() {
+  const SESSION_IDLE_MS = parseSessionIdleMs(process.env);
   console.log('Starting nope-mcp (HTTP mode)...');
   console.log(`AMB Relays: ${AMB_RELAYS.join(', ')}`);
   if (AMB_EXTRA_RELAYS.length) console.log(`AMB Extra Relays: ${AMB_EXTRA_RELAYS.join(', ')}`);
@@ -199,6 +218,7 @@ async function main() {
     },
     allowedHosts: HTTP_ALLOWED_HOSTS,
     allowedOrigins: HTTP_ALLOWED_ORIGINS,
+    sessionIdleMs: SESSION_IDLE_MS,
     serverName: SERVER_NAME,
     serverVersion: SERVER_VERSION,
     buildMcpServer: ({ scopes, query }) => {

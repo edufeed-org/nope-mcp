@@ -90,6 +90,13 @@ export interface HttpServerOptions {
     server: McpServer;
     dispose?: () => void | Promise<void>;
   };
+  /**
+   * Close a session (and dispose its relay clients) after this long without
+   * a request. Clients that never send DELETE — edufeed-app opens one session
+   * per tool call — would otherwise keep every session's sockets open forever.
+   * Default 10 minutes.
+   */
+  sessionIdleMs?: number;
   /** Used in /healthz response. */
   serverName?: string;
   serverVersion?: string;
@@ -155,6 +162,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
     buildMcpServer,
     serverName = 'nope-mcp',
     serverVersion = '0.0.0',
+    sessionIdleMs = 10 * 60_000,
   } = opts;
 
   const app = express();
@@ -259,6 +267,25 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
   };
 
   const transports = new Map<string, StreamableHTTPServerTransport>();
+  // Per-session activity: a session with a request in flight (e.g. an open
+  // GET SSE stream) is never expired, whatever its age.
+  const activity = new Map<string, { last: number; inflight: number }>();
+  const track = (id: string | undefined, res: Response) => {
+    const a = id ? activity.get(id) : undefined;
+    if (!a) return;
+    a.inflight++;
+    res.on('close', () => {
+      a.inflight--;
+      a.last = Date.now();
+    });
+  };
+  const sweep = setInterval(() => {
+    const now = Date.now();
+    for (const [id, a] of activity) {
+      if (a.inflight === 0 && now - a.last > sessionIdleMs) void transports.get(id)?.close();
+    }
+  }, Math.min(sessionIdleMs, 60_000));
+  sweep.unref();
 
   app.post(['/', '/mcp'], authMiddleware, async (req, res) => {
     const sid = req.headers['mcp-session-id'];
@@ -296,6 +323,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
           if (transport) transports.set(id, transport);
+          activity.set(id, { last: Date.now(), inflight: 0 });
         },
         enableDnsRebindingProtection: Boolean(
           (allowedHosts && allowedHosts.length > 0) ||
@@ -305,7 +333,10 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
         allowedOrigins,
       });
       transport.onclose = () => {
-        if (transport?.sessionId) transports.delete(transport.sessionId);
+        if (transport?.sessionId) {
+          transports.delete(transport.sessionId);
+          activity.delete(transport.sessionId);
+        }
         void dispose?.();
       };
       await mcp.connect(transport);
@@ -324,6 +355,12 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
       return;
     }
 
+    // On the initialize request, transport.sessionId is still undefined here
+    // (onsessioninitialized below only assigns it once handleRequest starts
+    // processing the body), so this is a harmless no-op for that one call;
+    // the activity entry it would track is created by onsessioninitialized
+    // in the same handleRequest instead.
+    track(transport.sessionId, res);
     await transport.handleRequest(req, res, req.body);
   });
 
@@ -340,6 +377,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
       });
       return;
     }
+    track(sessionId, res);
     await transport.handleRequest(req, res);
   };
 
@@ -368,6 +406,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
   return {
     port: resolvedPort,
     async close() {
+      clearInterval(sweep);
       for (const t of transports.values()) {
         try {
           await t.close();
@@ -376,6 +415,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
         }
       }
       transports.clear();
+      activity.clear();
       await new Promise<void>((resolve, reject) => {
         server.close((err) => (err ? reject(err) : resolve()));
       });

@@ -63,6 +63,13 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ### Fixed
 
+- HTTP: relay sockets no longer pile up. A session that is never closed
+  with DELETE (edufeed-app opens one per tool call) kept its per-session
+  relay clients — and their WebSockets — open forever; sessions idle for
+  `SESSION_IDLE_MS` (default 30 minutes, was a fixed 10) are now closed and
+  disposed — raised because stock MCP SDK clients don't re-initialise on
+  the 404 an expired session gets. Closing a relay client now also drops
+  relays removed from its set after use.
 - Attribute read rules now match edufeed-app's `calendar-attributes.js`
   exactly: the first VALID tag of a name wins (an invalid one no longer
   shadows a later valid one), the attendance mode is trimmed and read by

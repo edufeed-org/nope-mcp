@@ -631,6 +631,8 @@ export class AMBRelayClient {
   // ============ Cleanup ============
 
   close(): void {
-    this.pool.close(this.getSelectableRelays());
+    // destroy(), not close(selectable): also drops relays opened for a query
+    // outside the current set (removed via remove_relay, explicit relay args).
+    this.pool.destroy();
   }
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { finalizeEvent, generateSecretKey } from 'nostr-tools';
 import type { NostrEvent } from 'nostr-tools';
@@ -21,7 +21,7 @@ function startFakeRelay(opts: {
   events: NostrEvent[];
   delayMs?: number;
   neverEose?: boolean;
-}): Promise<{ url: string; close: () => Promise<void> }> {
+}): Promise<{ url: string; close: () => Promise<void>; openSockets: () => number }> {
   return new Promise((resolve) => {
     const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
     wss.on('connection', (ws: WebSocket) => {
@@ -55,6 +55,7 @@ function startFakeRelay(opts: {
       resolve({
         url: `ws://127.0.0.1:${port}`,
         close: () => new Promise<void>((res) => wss.close(() => res())),
+        openSockets: () => [...wss.clients].filter((c) => c.readyState === c.OPEN).length,
       });
     });
   });
@@ -82,6 +83,25 @@ describe('real relay: eoseTimeout/maxWait wiring (regression for the 4400ms nost
     client = undefined;
     await cleanup?.();
     cleanup = undefined;
+  });
+
+  it('close() drops every relay socket, including a relay removed after it was queried', async () => {
+    const configured = await startFakeRelay({ events: [] });
+    const other = await startFakeRelay({ events: [] });
+    cleanup = async () => {
+      await configured.close();
+      await other.close();
+    };
+    client = new AMBRelayClient([configured.url, other.url], { queryTimeoutMs: 2000 });
+    await client.query({ kinds: [30142], limit: 1 }, [configured.url]);
+    await client.queryEvents({ kinds: [30142], limit: 1 }, [other.url]);
+    expect(configured.openSockets() + other.openSockets()).toBe(2);
+
+    client.removeRelay(other.url);
+    client.close();
+    await vi.waitFor(() => expect(configured.openSockets() + other.openSockets()).toBe(0), {
+      timeout: 5000,
+    });
   });
 
   it('query()/search() (subscribeManyEose path) returns events delivered after 5.5s when the client timeout covers it', async () => {
