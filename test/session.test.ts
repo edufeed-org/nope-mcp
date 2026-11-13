@@ -126,3 +126,15 @@ describe('buildSessionServer tool profile', () => {
     expect(names).toContain('add_relay');
   });
 });
+
+describe('buildSessionServer with shared relay clients', () => {
+  it('refuses shared clients together with a profile that can mutate them', () => {
+    const owner = buildSessionServer(DEFAULTS, CAL_DEFAULTS, { read: true });
+    const clients = { ambClient: owner.ambClient, calendarClient: owner.calendarClient };
+    expect(() => buildSessionServer(DEFAULTS, CAL_DEFAULTS, { read: true, write: true }, { clients })).toThrow(/shared relay clients/i);
+    // the default profile is write-capable, so omitting it must be refused too
+    expect(() => buildSessionServer(DEFAULTS, CAL_DEFAULTS, undefined, { clients })).toThrow(/shared relay clients/i);
+    expect(() => buildSessionServer(DEFAULTS, CAL_DEFAULTS, { read: true, extract: true }, { clients })).not.toThrow();
+    owner.dispose();
+  });
+});

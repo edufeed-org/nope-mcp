@@ -130,4 +130,50 @@ describe('createMcpServerFactory: relay clients of standalone requests', () => {
     expect(factory.build({ scopes: ['mcp:read'], query: q(), standalone: true }).ambClient).toBe(first.ambClient);
     factory.close();
   });
+
+  /** Call a registered tool of a built server and parse its JSON text payload. */
+  const callTool = async (server: unknown, name: string, args: Record<string, unknown> = {}) => {
+    const tool = (server as { _registeredTools: Record<string, { handler: (...a: unknown[]) => Promise<{ content: { text: string }[] }> }> })
+      ._registeredTools[name];
+    return JSON.parse((await tool.handler(args, {})).content[0].text);
+  };
+
+  it('never hands the shared set to a write-capable request, which cannot change what a later anonymous request sees', async () => {
+    // No HTTP scope maps to write today; this pins the gate for the day one does.
+    const factory = createMcpServerFactory({
+      ...config,
+      profileFor: (scopes) => ({ read: true, extract: false, write: scopes.includes('mcp:write') }),
+    });
+    const before = factory.build({ scopes: ['mcp:read'], query: q(), standalone: true });
+    const writer = factory.build({ scopes: ['mcp:read', 'mcp:write'], query: q(), standalone: true });
+    expect(writer.ambClient).not.toBe(before.ambClient);
+    expect(writer.calendarClient).not.toBe(before.calendarClient);
+
+    expect(toolNames(writer.server)).toContain('add_relay');
+    await callTool(writer.server, 'add_relay', { url: 'wss://evil.example' });
+    expect(writer.ambClient.getRelays()).toContain('wss://evil.example');
+
+    const after = factory.build({ scopes: ['mcp:read'], query: q(), standalone: true });
+    expect(after.ambClient).toBe(before.ambClient);
+    expect(toolNames(after.server)).not.toContain('add_relay');
+    expect((await callTool(after.server, 'list_relays')).defaultRelays).toEqual(['wss://relay.edufeed.org']);
+
+    const close = vi.spyOn(writer.ambClient, 'close');
+    writer.dispose(); // its own clients, closed with the request
+    expect(close).toHaveBeenCalledTimes(1);
+    factory.close();
+  });
+
+  it('does not let ?relays= of one request leak into another', async () => {
+    const factory = createMcpServerFactory(config);
+    const scoped = factory.build({ scopes: ['mcp:read'], query: q('relays=sodix'), standalone: true });
+    const plain = factory.build({ scopes: ['mcp:read'], query: q(), standalone: true });
+    const scopedList = await callTool(scoped.server, 'list_relays');
+    const plainList = await callTool(plain.server, 'list_relays');
+    expect(scopedList.defaultRelays).toEqual(['wss://sodix.edufeed.org']);
+    expect(scopedList.defaultRelaysSource).toBe('connector-url');
+    expect(plainList.defaultRelays).toEqual(['wss://relay.edufeed.org']);
+    expect(plainList.defaultRelaysSource).toBe('server-config');
+    factory.close();
+  });
 });

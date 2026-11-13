@@ -35,12 +35,17 @@ export function buildSessionServer(
     communityClient?: AMBRelayClient;
     /**
      * Long-lived relay clients to use instead of creating a pair for this
-     * server. The caller owns them: `dispose` leaves them open. Only for
-     * servers without relay-mutating tools (profile.write off).
+     * server. The caller owns them: `dispose` leaves them open. Refused
+     * (throws) together with `profile.write`, whose tools mutate the client.
      */
     clients?: { ambClient: AMBRelayClient; calendarClient: AMBRelayClient };
   },
 ): SessionServer {
+  // Fail closed: write tools (add_relay/remove_relay) change the client's
+  // relay set, which on a shared client would change it for every caller.
+  if (options?.clients && profile.write) {
+    throw new Error('Shared relay clients cannot be combined with a write-capable tool profile');
+  }
   const licenseFilterMax = options?.licenseFilterMax ?? 'any';
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
