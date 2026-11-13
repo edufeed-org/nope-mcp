@@ -80,15 +80,16 @@ describe('per-connection session config', () => {
     expect(res.headers.get('mcp-session-id')).toBeNull();
   });
 
-  it('does not rebuild a session for a non-initialize request', async () => {
+  it('serves a non-initialize request without a session on its own, with the config of its own URL', async () => {
     const before = builds;
     const res = await fetch(`${base}/mcp?relays=sodix`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }),
     });
-    expect(res.status).toBe(404); // spec re-init signal, not a config error
-    expect(builds).toBe(before);
+    expect(res.status).toBe(200); // was 404 while every request needed a session
+    expect(res.headers.get('mcp-session-id')).toBeNull();
+    expect(builds).toBe(before + 1);
   });
 });
 

@@ -7,6 +7,11 @@
  * notifications (e.g. progress from the LLM-backed extract_metadata tool)
  * reach the client over SSE.
  *
+ * A POST without `Mcp-Session-Id` that is not `initialize` needs no session:
+ * it gets a server and a stateless transport of its own for that one request
+ * (scopes from its token, config from its URL), so standalone calls run in
+ * parallel. Interim form of spec revision 2026-07-28, which SDK 1.x lacks.
+ *
  * A plain browser `GET /` (no `Mcp-Session-Id` header, `Accept` without
  * `text/event-stream`) gets a small JSON info document instead of the usual
  * "unknown session" 404 — `GET /mcp` keeps returning that 404 unchanged,
@@ -293,13 +298,18 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
 
     let transport = sessionId ? transports.get(sessionId) : undefined;
 
-    if (!transport && isInitializeRequest(req.body)) {
-      // Session config comes from the initialize URL only; later requests on
-      // this session are addressed by Mcp-Session-Id and carry no config.
+    // A request that names no session and is not `initialize` is served on
+    // its own (the SDK's stateless mode): a fresh server and transport for
+    // this one request, gone when the response closes.
+    const standalone = !sessionId && !isInitializeRequest(req.body);
+
+    if (!transport && (standalone || isInitializeRequest(req.body))) {
+      // Config comes from the URL of the request that builds the server: the
+      // initialize request of a session, or the standalone request itself.
       const query = new URLSearchParams(req.originalUrl.split('?')[1] ?? '');
 
       // Built before the transport so a rejected config opens no session.
-      // Tool profile is fixed at init time from the initializing token's scopes; it is not re-derived per subsequent request on this session.
+      // Tool profile is fixed from this request's token scopes; a session does not re-derive it per subsequent request.
       let mcp: McpServer;
       let dispose: (() => void | Promise<void>) | undefined;
       try {
@@ -320,7 +330,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
       }
 
       transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
+        sessionIdGenerator: standalone ? undefined : () => randomUUID(),
         onsessioninitialized: (id) => {
           if (transport) transports.set(id, transport);
           activity.set(id, { last: Date.now(), inflight: 0 });
@@ -340,6 +350,11 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
         void dispose?.();
       };
       await mcp.connect(transport);
+      if (standalone) {
+        // Response finished or client hung up (= cancellation): drop the server.
+        const t = transport;
+        res.on('close', () => void t.close().catch(() => {}));
+      }
     }
 
     if (!transport) {
