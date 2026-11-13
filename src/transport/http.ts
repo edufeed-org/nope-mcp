@@ -1,16 +1,21 @@
 /**
  * Streamable HTTP transport for nope-mcp (formerly amb-mcp).
  *
- * Mounts `@modelcontextprotocol/sdk`'s StreamableHTTPServerTransport behind
+ * Mounts the MCP SDK v2 (`@modelcontextprotocol/server` + `/node`) behind
  * an Express app at both `/` and `/mcp` (POST/GET/DELETE, one shared session
  * map) plus a `/healthz` endpoint. Uses stateful sessions so server-push
  * notifications (e.g. progress from the LLM-backed extract_metadata tool)
  * reach the client over SSE.
  *
- * A POST without `Mcp-Session-Id` that is not `initialize` needs no session:
- * it gets a server and a stateless transport of its own for that one request
- * (scopes from its token, config from its URL), so standalone calls run in
- * parallel. Interim form of spec revision 2026-07-28, which SDK 1.x lacks.
+ * Two protocol eras on the same URL:
+ * - Revision 2026-07-28 (version and capabilities in the request's `_meta`,
+ *   no sessions): `createMcpHandler` answers each request from a server built
+ *   for that one request — `server/discover`, header validation, `resultType`.
+ * - 2025 revisions: `initialize` opens a session (`Mcp-Session-Id`) on a
+ *   session transport, exactly as before. A 2025-era request that names no
+ *   session is answered on its own by the same handler (stateless).
+ * Either way a standalone request takes its scopes from its own token and
+ * its config from its own URL, so standalone calls run in parallel.
  *
  * A plain browser `GET /` (no `Mcp-Session-Id` header, `Accept` without
  * `text/event-stream`) gets a small JSON info document instead of the usual
@@ -36,15 +41,19 @@
  * rejects the config throws SessionConfigError and no session is opened.
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 
-import type { McpServer } from '@modelcontextprotocol/server';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
+import { createMcpHandler, isInitializeRequest, isLegacyRequest, type McpServer } from '@modelcontextprotocol/server';
+import {
+  NodeStreamableHTTPServerTransport as StreamableHTTPServerTransport,
+  toNodeHandler,
+  toWebRequest,
+} from '@modelcontextprotocol/node';
 
 import type { AuthContext } from './auth.js';
 import { AuthError } from './auth.js';
@@ -84,14 +93,20 @@ export interface HttpServerOptions {
   /** Origin allow-list for DNS-rebinding protection. */
   allowedOrigins?: string[];
   /**
-   * Factory called once per new MCP session to build a fresh server.
+   * Factory called once per new MCP session, and once per standalone request
+   * (2026-07-28, or a 2025-era request without a session), to build a fresh server.
    * Receives the authenticated scopes so the session can be scope-gated, and
    * the query string of the initialize request so the connection URL can
    * configure the session. `dispose` (if returned) is invoked when the
    * session closes, so the session's relay connections can be torn down.
    * Throw SessionConfigError to refuse an unusable config with HTTP 400.
    */
-  buildMcpServer: (ctx: { scopes: string[]; query: URLSearchParams }) => {
+  buildMcpServer: (ctx: {
+    scopes: string[];
+    query: URLSearchParams;
+    /** True when the server answers one request only (no session). */
+    standalone: boolean;
+  }) => {
     server: McpServer;
     dispose?: () => void | Promise<void>;
   };
@@ -178,7 +193,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
     cors({
       origin: allowedOrigins && allowedOrigins.length > 0 ? allowedOrigins : '*',
       exposedHeaders: ['Mcp-Session-Id', 'Mcp-Protocol-Version', 'WWW-Authenticate'],
-      allowedHeaders: ['Content-Type', 'Mcp-Session-Id', 'Authorization', 'Mcp-Protocol-Version'],
+      allowedHeaders: ['Content-Type', 'Mcp-Session-Id', 'Authorization', 'Mcp-Protocol-Version', 'Mcp-Method', 'Mcp-Name'],
       methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
     }),
   );
@@ -292,18 +307,41 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
   }, Math.min(sessionIdleMs, 60_000));
   sweep.unref();
 
+  // Standalone requests of both eras. The handler calls its factory once per
+  // request; the server was already built by the route (so a rejected config
+  // can still answer 400) and is handed over through `prebuilt`.
+  const prebuilt = new AsyncLocalStorage<McpServer>();
+  const standalone = createMcpHandler(() => prebuilt.getStore()!);
+  const serveStandalone = toNodeHandler(standalone);
+
+  const rebindingProtection = Boolean(
+    (allowedHosts && allowedHosts.length > 0) || (allowedOrigins && allowedOrigins.length > 0),
+  );
+  // The session transport checks Host/Origin itself; the standalone handler
+  // does not, so the same exact-match check runs in front of it.
+  const rebindingRejection = (req: Request): string | undefined => {
+    const hostHeader = req.headers.host;
+    if (allowedHosts && allowedHosts.length > 0 && (!hostHeader || !allowedHosts.includes(hostHeader))) {
+      return `Invalid Host header: ${hostHeader}`;
+    }
+    const origin = req.headers.origin;
+    if (allowedOrigins && allowedOrigins.length > 0 && origin && !allowedOrigins.includes(origin)) {
+      return `Invalid Origin header: ${origin}`;
+    }
+    return undefined;
+  };
+
   app.post(['/', '/mcp'], authMiddleware, async (req, res) => {
+    // The SDK's own era decision. A 2026-07-28 request has no session; an
+    // `Mcp-Session-Id` it may still carry is ignored.
+    const legacy = await isLegacyRequest(await toWebRequest(req, req.body), req.body);
     const sid = req.headers['mcp-session-id'];
-    const sessionId = typeof sid === 'string' ? sid : undefined;
+    const sessionId = legacy && typeof sid === 'string' ? sid : undefined;
+    const opensSession = legacy && isInitializeRequest(req.body);
 
     let transport = sessionId ? transports.get(sessionId) : undefined;
 
-    // A request that names no session and is not `initialize` is served on
-    // its own (the SDK's stateless mode): a fresh server and transport for
-    // this one request, gone when the response closes.
-    const standalone = !sessionId && !isInitializeRequest(req.body);
-
-    if (!transport && (standalone || isInitializeRequest(req.body))) {
+    if (!transport && (opensSession || !sessionId)) {
       // Config comes from the URL of the request that builds the server: the
       // initialize request of a session, or the standalone request itself.
       const query = new URLSearchParams(req.originalUrl.split('?')[1] ?? '');
@@ -316,6 +354,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
         ({ server: mcp, dispose } = buildMcpServer({
           scopes: (res.locals.scopes as string[]) ?? [],
           query,
+          standalone: !opensSession,
         }));
       } catch (err) {
         if (err instanceof SessionConfigError) {
@@ -329,16 +368,25 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
         throw err;
       }
 
+      if (!opensSession) {
+        // Response finished or client hung up: the request's server is done.
+        res.on('close', () => void dispose?.());
+        const rejection = rebindingProtection ? rebindingRejection(req) : undefined;
+        if (rejection) {
+          res.status(403).json({ jsonrpc: '2.0', error: { code: -32000, message: rejection }, id: null });
+          return;
+        }
+        await prebuilt.run(mcp, () => serveStandalone(req, res, req.body));
+        return;
+      }
+
       transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: standalone ? undefined : () => randomUUID(),
+        sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
           if (transport) transports.set(id, transport);
           activity.set(id, { last: Date.now(), inflight: 0 });
         },
-        enableDnsRebindingProtection: Boolean(
-          (allowedHosts && allowedHosts.length > 0) ||
-            (allowedOrigins && allowedOrigins.length > 0),
-        ),
+        enableDnsRebindingProtection: rebindingProtection,
         allowedHosts,
         allowedOrigins,
       });
@@ -350,11 +398,6 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
         void dispose?.();
       };
       await mcp.connect(transport);
-      if (standalone) {
-        // Response finished or client hung up (= cancellation): drop the server.
-        const t = transport;
-        res.on('close', () => void t.close().catch(() => {}));
-      }
     }
 
     if (!transport) {
@@ -431,6 +474,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
       }
       transports.clear();
       activity.clear();
+      await standalone.close();
       await new Promise<void>((resolve, reject) => {
         server.close((err) => (err ? reject(err) : resolve()));
       });

@@ -24,7 +24,6 @@
     "@anthropic-ai/sdk": "^0.40.0",
     "@contextvm/sdk": "^0.3.2",
     "@modelcontextprotocol/node": "^2.1.2",
-    "@modelcontextprotocol/sdk": "^1.26.0",
     "@modelcontextprotocol/server": "^2.4.0",
     "@mozilla/readability": "^0.6.0",
     "amb-nostr-converter": "https://git.edufeed.org/api/packages/edufeed/npm/amb-nostr-converter/-/0.0.0-d216541/amb-nostr-converter-0.0.0-d216541.tgz",
@@ -47,6 +46,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.25",
     "@types/n3": "^1.26.1",

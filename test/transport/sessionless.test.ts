@@ -207,7 +207,7 @@ describe('revision 2026-07-28', () => {
   it('answers server/discover with the revisions it speaks', async () => {
     const msg = await rpc(await modern('server/discover'));
     expect(msg.result.supportedVersions).toContain('2026-07-28');
-    expect(msg.result.serverInfo.name).toBe('test');
+    expect(msg.result._meta['io.modelcontextprotocol/serverInfo'].name).toBe('test');
   });
 
   it('marks tools/list as cacheable', async () => {
@@ -332,6 +332,34 @@ describe('the session flow next to it', () => {
     const res = await post(call(1, 'x'), { 'Mcp-Session-Id': 'gone' });
     expect(res.status).toBe(404);
     expect((await res.json()).error.message).toMatch(/Session not found/);
+  });
+});
+
+describe('Host allow-list on standalone requests', () => {
+  it('refuses a Host outside the list with 403, in both eras, as the session transport does', async () => {
+    const guarded = await startHttpServer({
+      port: 0,
+      host: '127.0.0.1',
+      allowedHosts: ['mcp.edufeed.org'],
+      buildMcpServer: () => ({ server: new McpServer({ name: 'test', version: '0' }) }),
+    });
+    const url = `http://127.0.0.1:${guarded.port}/mcp`;
+    const send = (body: unknown, headers: Record<string, string> = {}) =>
+      fetch(url, { method: 'POST', headers: { ...HEADERS, ...headers }, body: JSON.stringify(body) });
+    try {
+      const legacy = await send({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+      const modernReq = await send(
+        { jsonrpc: '2.0', id: 1, method: 'tools/list', params: { _meta: META } },
+        { 'MCP-Protocol-Version': '2026-07-28', 'Mcp-Method': 'tools/list' },
+      );
+      const session = await send({
+        jsonrpc: '2.0', id: 1, method: 'initialize',
+        params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '0' } },
+      });
+      expect([legacy.status, modernReq.status, session.status]).toEqual([403, 403, 403]);
+    } finally {
+      await guarded.close();
+    }
   });
 });
 

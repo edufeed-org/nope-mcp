@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { generateKeyPair, exportJWK, SignJWT, createLocalJWKSet } from 'jose';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { startHttpServer, type HttpServerHandle } from '../../src/transport/http.js';
 import { createJwtVerifier } from '../../src/transport/auth.js';
 

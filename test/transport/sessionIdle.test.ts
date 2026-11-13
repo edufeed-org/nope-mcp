@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { startHttpServer, type HttpServerHandle } from '../../src/transport/http.js';
 
 const initBody = JSON.stringify({
