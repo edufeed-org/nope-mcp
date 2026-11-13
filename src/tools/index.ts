@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { AMBRelayClient } from '../relay/client.js';
 import { registerSearchTool } from './search.js';
@@ -36,6 +37,23 @@ export interface ToolProfile {
 }
 
 /**
+ * Advertise every tool's arguments as a closed object
+ * (`additionalProperties: false`, as the zod 3 conversion did) while unknown
+ * arguments are still dropped instead of failing the call. Patches
+ * `registerTool` (like instrumentToolLogging) so no tool can forget it.
+ */
+function closeToolInputs(server: McpServer): void {
+  const original = server.registerTool.bind(server) as (...args: unknown[]) => unknown;
+  server.registerTool = ((name: string, config: { inputSchema?: unknown }, cb: unknown) => {
+    const input = config.inputSchema;
+    if (input === undefined) return original(name, config, cb);
+    // A raw shape ({ query: z.string() }) or an already built z.object(...)
+    const schema = '~standard' in (input as object) ? (input as z.ZodType) : z.object(input as z.ZodRawShape);
+    return original(name, { ...config, inputSchema: schema.meta({ additionalProperties: false }) }, cb);
+  }) as unknown as McpServer['registerTool'];
+}
+
+/**
  * Register MCP tools with the server, filtered by the given profile.
  *
  * Defaults to the full toolset (read + extract + write) to preserve
@@ -56,6 +74,7 @@ export function registerTools(
     communityClient?: AMBRelayClient;
   },
 ): void {
+  closeToolInputs(server);
   if (profile.read) {
     // Query / read tools
     const passagesAvailable = !!(options?.indexer && options?.spellClient);
