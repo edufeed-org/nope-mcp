@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { generateKeyPair, exportJWK, SignJWT, createLocalJWKSet } from 'jose';
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { startHttpServer, SessionConfigError, type HttpServerHandle } from '../../src/transport/http.js';
 import { createJwtVerifier } from '../../src/transport/auth.js';
 import { buildSessionServer } from '../../src/session.js';
@@ -22,7 +24,7 @@ const HEADERS = {
   Accept: 'application/json, text/event-stream',
 };
 
-// What a 2026-07-28 client puts on every request; the server must not choke on it.
+// What a 2026-07-28 client puts on every request, in the body and mirrored in headers.
 const META = {
   'io.modelcontextprotocol/protocolVersion': '2026-07-28',
   'io.modelcontextprotocol/clientInfo': { name: 'test-client', version: '0' },
@@ -41,12 +43,27 @@ async function rpc(res: Response) {
   return JSON.parse(data.slice(6));
 }
 
+// A 2025-era request: no _meta envelope, no session.
 const call = (id: number, text: string) => ({
   jsonrpc: '2.0',
   id,
   method: 'tools/call',
-  params: { name: 'echo', arguments: { text }, _meta: META },
+  params: { name: 'echo', arguments: { text } },
 });
+
+// The same call as revision 2026-07-28 sends it.
+const modern = (method: string, params: Record<string, unknown> = {}, headers: Record<string, string> = {}) =>
+  post(
+    { jsonrpc: '2.0', id: 1, method, params: { ...params, _meta: META } },
+    {
+      'MCP-Protocol-Version': '2026-07-28',
+      'Mcp-Method': method,
+      ...(typeof params.name === 'string' ? { 'Mcp-Name': params.name } : {}),
+      ...headers,
+    },
+  );
+const modernCall = (text: string, headers: Record<string, string> = {}) =>
+  modern('tools/call', { name: 'echo', arguments: { text } }, headers);
 
 beforeAll(async () => {
   const { publicKey, privateKey } = await generateKeyPair('RS256');
@@ -71,12 +88,12 @@ beforeAll(async () => {
       built.push({ scopes, query });
       const server = new McpServer({ name: 'test', version: '0' });
       for (const name of ['zulu', 'echo', 'alpha']) {
-        server.tool(name, { text: z.string().optional() }, async ({ text }) => {
+        server.registerTool(name, { inputSchema: z.object({ text: z.string().optional() }) }, async ({ text }) => {
           running++;
           maxRunning = Math.max(maxRunning, running);
           await new Promise((r) => setTimeout(r, 50));
           running--;
-          return { content: [{ type: 'text', text: `${name}:${text ?? ''}` }] };
+          return { content: [{ type: 'text' as const, text: `${name}:${text ?? ''}` }] };
         });
       }
       return { server, dispose: () => { disposed++; } };
@@ -126,7 +143,7 @@ describe('requests without a session', () => {
   });
 
   it('lists tools in the same order on every request, and as a session does', async () => {
-    const list = { jsonrpc: '2.0', id: 1, method: 'tools/list', params: { _meta: META } };
+    const list = { jsonrpc: '2.0', id: 1, method: 'tools/list' };
     const names = async (res: Response) => (await rpc(res)).result.tools.map((t: { name: string }) => t.name);
     const first = await names(await post(list));
     const second = await names(await post(list));
@@ -142,6 +159,7 @@ describe('requests without a session', () => {
     expect(first).toEqual(['zulu', 'echo', 'alpha']); // registration order, not sorted per request
     expect(second).toEqual(first);
     expect(inSession).toEqual(first);
+    expect(await names(await modern('tools/list'))).toEqual(first);
   });
 
   it('refuses a bad token exactly like the session flow does', async () => {
@@ -176,6 +194,103 @@ describe('requests without a session', () => {
   });
 });
 
+describe('revision 2026-07-28', () => {
+  it('answers a tools/call that carries version and capabilities in _meta', async () => {
+    const res = await modernCall('hi');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('mcp-session-id')).toBeNull();
+    const msg = await rpc(res);
+    expect(msg.result.content[0].text).toBe('echo:hi');
+    expect(msg.result.resultType).toBe('complete');
+  });
+
+  it('answers server/discover with the revisions it speaks', async () => {
+    const msg = await rpc(await modern('server/discover'));
+    expect(msg.result.supportedVersions).toContain('2026-07-28');
+    expect(msg.result.serverInfo.name).toBe('test');
+  });
+
+  it('marks tools/list as cacheable', async () => {
+    const { result } = await rpc(await modern('tools/list'));
+    expect(typeof result.ttlMs).toBe('number');
+    expect(['public', 'private']).toContain(result.cacheScope);
+  });
+
+  it('refuses a header that contradicts the body (HeaderMismatch)', async () => {
+    const res = await modernCall('x', { 'Mcp-Name': 'alpha' });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe(-32020);
+  });
+
+  it('names its revisions when asked for one it does not speak', async () => {
+    const res = await post(
+      { ...call(1, 'x'), params: { ...call(1, 'x').params, _meta: { ...META, 'io.modelcontextprotocol/protocolVersion': '2099-01-01' } } },
+      { 'MCP-Protocol-Version': '2099-01-01', 'Mcp-Method': 'tools/call', 'Mcp-Name': 'echo' },
+    );
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.code).toBe(-32022);
+    expect(error.data.supported).toContain('2026-07-28');
+  });
+
+  it('ignores a stray Mcp-Session-Id', async () => {
+    const res = await modernCall('x', { 'Mcp-Session-Id': 'gone' });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('mcp-session-id')).toBeNull();
+  });
+
+  it('answers parallel calls', async () => {
+    maxRunning = 0;
+    const texts = await Promise.all(
+      Array.from({ length: 8 }, (_, i) => modernCall(`n${i}`).then(async (res) => (await rpc(res)).result.content[0].text)),
+    );
+    expect(texts).toEqual(Array.from({ length: 8 }, (_, i) => `echo:n${i}`));
+    expect(maxRunning).toBeGreaterThan(1);
+  });
+
+  it('refuses a bad token exactly like the session flow does', async () => {
+    const res = await modernCall('x', { Authorization: 'Bearer not-a-jwt' });
+    expect(res.status).toBe(401);
+    expect(res.headers.get('www-authenticate')).toContain('resource_metadata=');
+    expect((await res.json()).error.message).toBe('Unauthorized');
+  });
+
+  it('takes scopes from the token and ?relays= from the URL of the request itself', async () => {
+    built = [];
+    await (await modernCall('x')).text();
+    await (await modernCall('x', { Authorization: `Bearer ${await sign('mcp:read mcp:extract')}` })).text();
+    expect(built.map((b) => b.scopes)).toEqual([['mcp:read'], ['mcp:read', 'mcp:extract']]);
+
+    const res = await fetch(`${base}/mcp?relays=nope`, {
+      method: 'POST',
+      headers: { ...HEADERS, 'MCP-Protocol-Version': '2026-07-28', 'Mcp-Method': 'tools/list' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: { _meta: META } }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe(-32602);
+  });
+
+  it('disposes the per-request server', async () => {
+    const before = disposed;
+    await (await modernCall('x')).text();
+    await expect.poll(() => disposed).toBe(before + 1);
+  });
+
+  it('lets a browser send the new request headers (CORS preflight)', async () => {
+    const res = await fetch(`${base}/mcp`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://app.example',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'mcp-method, mcp-name, mcp-protocol-version',
+      },
+    });
+    const allowed = res.headers.get('access-control-allow-headers')!.toLowerCase();
+    expect(allowed).toContain('mcp-method');
+    expect(allowed).toContain('mcp-name');
+  });
+});
+
 describe('the session flow next to it', () => {
   it('initialize → initialized → tools/call still works, in one session', async () => {
     built = [];
@@ -199,6 +314,18 @@ describe('the session flow next to it', () => {
 
     const del = await fetch(`${base}/mcp`, { method: 'DELETE', headers: session });
     expect(del.status).toBe(200);
+  });
+
+  it('serves the v1 SDK client (what Claude Code and the claude.ai connector speak)', async () => {
+    const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`));
+    const client = new Client({ name: 'v1-client', version: '0' });
+    await client.connect(transport);
+    expect(transport.sessionId).toBeTruthy();
+    expect((await client.listTools()).tools.map((t) => t.name)).toEqual(['zulu', 'echo', 'alpha']);
+    const result = await client.callTool({ name: 'echo', arguments: { text: 'v1' } });
+    expect((result.content as { text: string }[])[0].text).toBe('echo:v1');
+    await transport.terminateSession();
+    await client.close();
   });
 
   it('still answers an unknown Mcp-Session-Id with 404 so the client re-initializes', async () => {
