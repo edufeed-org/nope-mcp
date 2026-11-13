@@ -6,6 +6,8 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-13
+
 ### Added
 
 - `resolve_author` candidates include `picture`.
@@ -116,8 +118,9 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
   2.x (+ `@modelcontextprotocol/node`) and from zod 3 to zod 4. Clients of the
   2025 revisions (`initialize` + `Mcp-Session-Id`) are served unchanged on the
   same URL. `tools/list` schemas are now JSON Schema 2020-12 (was draft-07),
-  no longer carry `additionalProperties: false` or `execution.taskSupport`,
-  and numeric literal unions are listed as `anyOf`/`const`.
+  no longer carry `execution.taskSupport`, and numeric literal unions are
+  listed as `anyOf`/`const`. Every tool's input schema still says
+  `additionalProperties: false`; unknown arguments are dropped, not rejected.
 - `limit` now applies to the merged list across relays (search_content,
   search_resources, search_passages), not per relay.
 - search_content/search_resources re-order results by `(score ?? 0) +
