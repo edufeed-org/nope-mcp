@@ -6,7 +6,7 @@
  * resources from a Nostr relay.
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import {
   NostrServerTransport,
   PrivateKeySigner,

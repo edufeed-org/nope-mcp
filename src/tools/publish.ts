@@ -7,7 +7,7 @@
 import { z } from 'zod';
 import { finalizeEvent, getEventHash, verifyEvent } from 'nostr-tools';
 import type { NostrEvent } from 'nostr-tools';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import {
   getPublishService,
   buildMetadataEvent,
@@ -27,7 +27,7 @@ const DEFAULT_RELAYS = process.env.AMB_RELAYS?.split(',') || ['wss://relay.edufe
  * Extract user ID from MCP auth context
  */
 function getUserId(extra: unknown): string {
-  const authInfo = (extra as { authInfo?: { clientPubkey?: string } })?.authInfo;
+  const authInfo = (extra as { http?: { authInfo?: { clientPubkey?: string } } })?.http?.authInfo; // SDK v2 context
   return authInfo?.clientPubkey ?? 'local';
 }
 
@@ -37,7 +37,7 @@ function getUserId(extra: unknown): string {
 const conceptSchema = z.object({
   id: z.string().describe('Concept URI (e.g., from HCRT vocabulary)'),
   prefLabel: z
-    .record(z.string())
+    .record(z.string(), z.string())
     .optional()
     .describe('Localized labels (e.g., {"de": "Video", "en": "Video"})'),
 });

@@ -6,8 +6,8 @@
  * All logging goes to stderr to keep stdout clean for JSON-RPC.
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { McpServer } from '@modelcontextprotocol/server';
+import { serveStdio } from '@modelcontextprotocol/server/stdio';
 
 import { AMBRelayClient } from './relay/client.js';
 import { registerTools } from './tools/index.js';
@@ -51,20 +51,22 @@ async function main() {
   // Community relay client (COMMUNITY_RELAYS, optional); unset → find_community absent
   const communityClient = COMMUNITY_RELAYS?.length ? new AMBRelayClient(COMMUNITY_RELAYS) : undefined;
 
-  // Create MCP server
-  const server = new McpServer(
-    { name: SERVER_NAME, version: SERVER_VERSION },
-    { instructions: buildServerInstructions({ licenseFilterMax: LICENSE_FILTER_MAX }) },
-  );
-
-  // Register tools and resources
-  registerTools(server, ambClient, calendarClient, { read: true, extract: true, write: true }, {
-    spellClient,
-    indexer: indexer ?? undefined,
-    licenseFilterMax: LICENSE_FILTER_MAX,
-    communityClient,
-  });
-  registerResources(server, ambClient);
+  // One server per connection (the factory also runs for a discarded
+  // `server/discover` probe); the relay clients above are shared.
+  const createServer = () => {
+    const server = new McpServer(
+      { name: SERVER_NAME, version: SERVER_VERSION },
+      { instructions: buildServerInstructions({ licenseFilterMax: LICENSE_FILTER_MAX }) },
+    );
+    registerTools(server, ambClient, calendarClient, { read: true, extract: true, write: true }, {
+      spellClient,
+      indexer: indexer ?? undefined,
+      licenseFilterMax: LICENSE_FILTER_MAX,
+      communityClient,
+    });
+    registerResources(server, ambClient);
+    return server;
+  };
 
   // Load known authors from follow sets if configured
   if (AMB_AUTHOR_SETS.length > 0) {
@@ -101,11 +103,9 @@ async function main() {
     }
   }
 
-  // Use stdio transport for cvmi serve compatibility
-  const transport = new StdioServerTransport();
-
-  // Connect and run
-  await server.connect(transport);
+  // Serves both protocol eras: the opening exchange (2025 `initialize` or a
+  // 2026-07-28 request) pins the connection.
+  const handle = serveStdio(createServer);
   console.error('nope-mcp running (stdio)');
 
   // Handle shutdown
@@ -115,7 +115,7 @@ async function main() {
     calendarClient.close();
     spellClient.close();
     communityClient?.close();
-    await server.close();
+    await handle.close();
     process.exit(0);
   });
 
@@ -125,7 +125,7 @@ async function main() {
     calendarClient.close();
     spellClient.close();
     communityClient?.close();
-    await server.close();
+    await handle.close();
     process.exit(0);
   });
 }

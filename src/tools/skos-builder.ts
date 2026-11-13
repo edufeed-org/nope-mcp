@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import {
   vocabularyStore,
   createVocabulary,
@@ -29,7 +29,8 @@ import { READ_ONLY, SESSION_MUTATOR, SESSION_DESTRUCTIVE } from './annotations.j
  * Falls back to 'local' for stdio transport
  */
 function getUserPubkey(extra: unknown): string {
-  const authInfo = (extra as { authInfo?: { clientPubkey?: string } })?.authInfo;
+  // SDK v2: a transport's authInfo (ContextVM's client pubkey) arrives as ctx.http.authInfo.
+  const authInfo = (extra as { http?: { authInfo?: { clientPubkey?: string } } })?.http?.authInfo;
   return authInfo?.clientPubkey ?? 'local';
 }
 
@@ -37,7 +38,7 @@ function getUserPubkey(extra: unknown): string {
  * Localized string schema
  */
 const localizedStringSchema = z
-  .record(z.string())
+  .record(z.string(), z.string())
   .describe('Localized strings by language code (e.g., {"de": "Text", "en": "Text"})');
 
 /**
@@ -477,7 +478,7 @@ function registerListVocabulariesTool(server: McpServer): void {
     {
       title: 'List Vocabularies',
       description: 'List all vocabularies currently being built in this session.',
-      inputSchema: {},
+      inputSchema: z.object({}),
       annotations: READ_ONLY,
     },
     async (_params, extra) => {

@@ -1,4 +1,5 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+import type { McpServer } from '@modelcontextprotocol/server';
 import type { AMBRelayClient } from '../relay/client.js';
 import { READ_ONLY } from './annotations.js';
 
@@ -53,7 +54,7 @@ export function registerStatsTool(
       title: 'Relay Statistics',
       description:
         'Get information about all selectable AMB relays (default and extra), including supported NIPs, relay name, and description.',
-      inputSchema: {},
+      inputSchema: z.object({}),
       annotations: READ_ONLY,
     },
     async () => {

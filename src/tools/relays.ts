@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import type { AMBRelayClient } from '../relay/client.js';
 import { getRelayListService } from '../signer/index.js';
 import { getSignerManager } from './signer.js';
@@ -70,7 +70,7 @@ export function registerListRelaysTool(
         'List the configured AMB relays. defaultRelays are searched on every query; ' +
         'extraRelays hold different corpora (e.g. the OERSI aggregation) and are only ' +
         'searched when a search/get tool call passes them in its relays parameter.',
-      inputSchema: {},
+      inputSchema: z.object({}),
       annotations: READ_ONLY,
     },
     async () => {
@@ -250,7 +250,7 @@ export function registerRemoveRelayTool(
  * Extract user ID from MCP auth context
  */
 function getUserId(extra: unknown): string {
-  const authInfo = (extra as { authInfo?: { clientPubkey?: string } })?.authInfo;
+  const authInfo = (extra as { http?: { authInfo?: { clientPubkey?: string } } })?.http?.authInfo; // SDK v2 context
   return authInfo?.clientPubkey ?? 'local';
 }
 

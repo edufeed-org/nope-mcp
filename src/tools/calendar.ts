@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import type { AMBRelayClient } from '../relay/client.js';
 import { CalendarAuthorCache } from '../calendar/authorInfo.js';
 import { getHiddenCalendarSources } from '../calendar/hiddenSources.js';
@@ -195,7 +195,7 @@ export function registerCalendarTools(
         'List known calendar event authors loaded from configured follow sets (NIP-51 kind 30000). ' +
         'Returns author names, pubkeys, and NIP-05 identifiers. Use the returned pubkeys with ' +
         'search_calendar_events(authors: [...]) to filter events by author.',
-      inputSchema: {},
+      inputSchema: z.object({}),
       annotations: READ_ONLY,
     },
     async () => {

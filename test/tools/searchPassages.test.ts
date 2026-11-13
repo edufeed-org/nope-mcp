@@ -98,7 +98,7 @@ describe('runSearchPassages', () => {
     await runSearchPassages(
       d,
       { question: 'q', authors: ['$me'] },
-      { authInfo: { clientPubkey: 'a'.repeat(64) } }
+      { http: { authInfo: { clientPubkey: 'a'.repeat(64) } } }
     );
     expect(d.searchChunks).toHaveBeenCalledWith(RELAY, expect.objectContaining({
       filter: { pubkey: ['a'.repeat(64)] },

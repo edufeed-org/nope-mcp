@@ -16,7 +16,7 @@
  * actually does, not by its name.
  */
 
-import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
+import type { ToolAnnotations } from '@modelcontextprotocol/server';
 
 /**
  * Pure queries against the AMB relays / in-session state: no mutation, no

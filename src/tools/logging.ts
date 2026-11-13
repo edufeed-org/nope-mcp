@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 
 /** One line per tool call, emitted as JSON on stderr by the default sink. */
 export interface ToolLogLine {

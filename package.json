@@ -23,7 +23,9 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
     "@contextvm/sdk": "^0.3.2",
+    "@modelcontextprotocol/node": "^2.1.2",
     "@modelcontextprotocol/sdk": "^1.26.0",
+    "@modelcontextprotocol/server": "^2.4.0",
     "@mozilla/readability": "^0.6.0",
     "amb-nostr-converter": "https://git.edufeed.org/api/packages/edufeed/npm/amb-nostr-converter/-/0.0.0-d216541/amb-nostr-converter-0.0.0-d216541.tgz",
     "applesauce-core": "^5.1.0",
@@ -42,7 +44,7 @@
     "unpdf": "^1.6.2",
     "word-extractor": "^1.0.4",
     "ws": "^8.20.0",
-    "zod": "^3.24.0"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import type { AMBRelayClient } from '../relay/client.js';
 import { parseCommunity, type Community } from '../community/parse.js';
 import { lexicalScore, tokenize } from '../content/rank.js';

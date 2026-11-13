@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import type { NostrEvent } from 'nostr-tools';
 import type { AMBRelayClient } from '../relay/client.js';
 import { FOLLOWUP_PROBE_TIMEOUT_MS } from '../relay/client.js';

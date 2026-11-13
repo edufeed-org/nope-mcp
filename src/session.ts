@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 
 import { AMBRelayClient } from './relay/client.js';
 import { registerTools } from './tools/index.js';

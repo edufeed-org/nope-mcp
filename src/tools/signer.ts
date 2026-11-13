@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { SignerManager } from '../signer/index.js';
 import { READ_ONLY, SESSION_MUTATOR } from './annotations.js';
 
@@ -30,7 +30,8 @@ function getSignerManager(): SignerManager {
  * Falls back to 'local' for stdio transport
  */
 function getUserId(extra: unknown): string {
-  const authInfo = (extra as { authInfo?: { clientPubkey?: string } })?.authInfo;
+  // SDK v2: a transport's authInfo (ContextVM's client pubkey) arrives as ctx.http.authInfo.
+  const authInfo = (extra as { http?: { authInfo?: { clientPubkey?: string } } })?.http?.authInfo;
   return authInfo?.clientPubkey ?? 'local';
 }
 
@@ -309,7 +310,7 @@ function registerSignerDisconnectTool(server: McpServer): void {
     {
       title: 'Disconnect Signer',
       description: 'Disconnect the current signer session.',
-      inputSchema: {},
+      inputSchema: z.object({}),
       annotations: SESSION_MUTATOR,
     },
     async (_params, extra) => {
@@ -362,7 +363,7 @@ function registerSignerStatusTool(server: McpServer): void {
     {
       title: 'Signer Status',
       description: 'Check the current signer connection status.',
-      inputSchema: {},
+      inputSchema: z.object({}),
       annotations: READ_ONLY,
     },
     async (_params, extra) => {

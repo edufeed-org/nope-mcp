@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { extractMetadata } from '../lib/extractMetadata.js';
 import type { AnthropicLike } from '../lib/llm.js';

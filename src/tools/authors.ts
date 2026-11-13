@@ -1,4 +1,5 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { getAuthorDirectory } from '../authors.js';
 import { READ_ONLY } from './annotations.js';
 
@@ -14,7 +15,7 @@ export function registerAuthorTools(server: McpServer): void {
         'List known educational resource authors loaded from configured follow sets (NIP-51 kind 30000). ' +
         'Returns author names, pubkeys, and NIP-05 identifiers. Use the returned pubkeys with ' +
         'search_resources(authors: [...]) to filter resources by author.',
-      inputSchema: {},
+      inputSchema: z.object({}),
       annotations: READ_ONLY,
     },
     async () => {

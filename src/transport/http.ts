@@ -42,7 +42,7 @@ import type { Server } from 'node:http';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 

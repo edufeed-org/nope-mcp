@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { nip19 } from 'nostr-tools';
 import type { Event as NostrEvent, Filter } from 'nostr-tools';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { AMBRelayClient, RelayUnreachableError } from '../relay/client.js';
 import { IndexerClient, type PassageHit } from '../indexer/client.js';
 import { SPELL_KIND, SpellError, type Spell } from '../spells/types.js';
@@ -249,7 +249,7 @@ function resolveMe(paramMe: string | undefined, extra: unknown): string | undefi
     if (decoded.type === 'npub') return decoded.data;
     throw new SpellError('me_unresolvable', `me must be an npub or hex pubkey, got: ${paramMe}`);
   }
-  const clientPubkey = (extra as { authInfo?: { clientPubkey?: string } } | undefined)?.authInfo?.clientPubkey;
+  const clientPubkey = (extra as { http?: { authInfo?: { clientPubkey?: string } } } | undefined)?.http?.authInfo?.clientPubkey;
   return clientPubkey ?? getSessionPubkey(extra) ?? undefined;
 }
 
