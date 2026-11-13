@@ -156,7 +156,8 @@ node dist/http.js     # production (after `npm run build`)
 The server exposes:
 
 - `POST /` and `POST /mcp` — JSON-RPC requests (initialize, tool calls, etc.), same session map;
-  without `Mcp-Session-Id` a non-initialize request is served standalone (see below)
+  a request of revision 2026-07-28, or any non-initialize request without `Mcp-Session-Id`,
+  is served standalone (see below)
 - `GET /` and `GET /mcp` — server-push SSE stream for the current session
 - `GET /` (plain browser request — no `Mcp-Session-Id`, no `Accept: text/event-stream`) — a small
   JSON info document (`name`, `version`, `mcp`, `docs`, `transport`) instead of the MCP 404;
@@ -187,25 +188,33 @@ curl http://localhost:3000/mcp -X POST \
 # (scopes are fixed at session init; a token on later requests does not upgrade the session)
 ```
 
-**Without a session.** A `POST` that carries no `Mcp-Session-Id` and is not
-`initialize` is answered on its own — no handshake, nothing to keep or delete,
-and any number of them may run in parallel. Scopes come from the token of that
-request, `?relays=` from its URL. The answer arrives as an SSE stream
-(`data: {…}` holds the JSON-RPC response); closing the connection cancels the call.
+**Without a session (MCP revision 2026-07-28).** The server speaks revision
+`2026-07-28` natively: no handshake, no session — every request carries its
+protocol version and capabilities in `_meta`, mirrored in headers, and any
+number of them may run in parallel. Scopes come from the token of that
+request, `?relays=` from its URL. `server/discover` lists the revision and the
+capabilities. The answer is a single JSON body (an SSE stream only when the
+tool reports progress before its result); closing the connection cancels the call.
 
 ```bash
 curl http://localhost:3000/mcp -X POST \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
-  -H 'MCP-Protocol-Version: 2025-11-25' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_relays","arguments":{}}}'
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: tools/call' \
+  -H 'Mcp-Name: list_relays' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_relays","arguments":{},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"curl","version":"0"},"io.modelcontextprotocol/clientCapabilities":{}}}}'
 ```
 
-This is the MCP SDK's stateless mode, an interim step towards spec revision
-`2026-07-28` (no sessions at all), which the 1.x SDK does not implement: the
-`io.modelcontextprotocol/*` fields in `_meta` are accepted but ignored, an
-`MCP-Protocol-Version: 2026-07-28` header is refused with 400, and there is no
-`server/discover`.
+The headers must match the body (`Mcp-Method` = `method`, `Mcp-Name` =
+`params.name`, the version header = the `_meta` version), otherwise the
+request is refused with 400 / `-32020`.
+
+Clients of the 2025 revisions keep working on the same URL: `initialize`
+opens a session as in the handshake above, and a 2025-style request without
+`_meta` and without `Mcp-Session-Id` is answered on its own (stateless, as SSE).
+Standalone requests share long-lived relay connections per relay set; a
+session has its own.
 
 Smoke-test with [MCP Inspector](https://github.com/modelcontextprotocol/inspector):
 

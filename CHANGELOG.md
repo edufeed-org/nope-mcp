@@ -34,10 +34,15 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
   `COMMUNITY_RELAYS` env var (comma-separated; unset disables the tool), a
   5-minute in-memory stale-while-revalidate cache per process; reports
   `relaysIncomplete`/`warning` when a community relay did not finish.
-- HTTP: a request without `Mcp-Session-Id` that is not `initialize` is now
-  served on its own (MCP SDK stateless mode) instead of answered with 404, so
-  a client can send one standalone `tools/call` per HTTP request, several in
-  parallel, without the initialize handshake. Sessions work as before.
+- MCP spec revision **2026-07-28** on HTTP and stdio: requests without a
+  session that carry protocol version and capabilities in `_meta`,
+  `server/discover`, `Mcp-Method`/`Mcp-Name` header validation, `resultType`
+  on results, `ttlMs`/`cacheScope` on lists; CORS allows the new headers. One
+  standalone `tools/call` per HTTP request, several in parallel.
+- HTTP: a 2025-style request without `Mcp-Session-Id` that is not `initialize`
+  is answered on its own (stateless) instead of with 404.
+- HTTP: standalone requests share long-lived relay clients (one per relay
+  set), so a call no longer opens new WebSockets; sessions keep their own.
 - `search_calendar_events` returns NIP-52 time semantics the model no longer
   has to know: `effectiveEnd` (Unix seconds when the event is over — an
   end-less 31923 ends at its start, an end-less 31922 is a one-day event,
@@ -107,6 +112,12 @@ All notable changes to nope-mcp (formerly amb-mcp) are documented here. The form
 
 ### Changed
 
+- Moved from `@modelcontextprotocol/sdk` 1.x to `@modelcontextprotocol/server`
+  2.x (+ `@modelcontextprotocol/node`) and from zod 3 to zod 4. Clients of the
+  2025 revisions (`initialize` + `Mcp-Session-Id`) are served unchanged on the
+  same URL. `tools/list` schemas are now JSON Schema 2020-12 (was draft-07),
+  no longer carry `additionalProperties: false` or `execution.taskSupport`,
+  and numeric literal unions are listed as `anyOf`/`const`.
 - `limit` now applies to the merged list across relays (search_content,
   search_resources, search_passages), not per relay.
 - search_content/search_resources re-order results by `(score ?? 0) +
