@@ -26,7 +26,7 @@ import { SERVER_NAME, SERVER_VERSION } from './server-info.js';
 import type { ToolProfile } from './tools/index.js';
 import { AMBRelayClient } from './relay/client.js';
 import { IndexerClient } from './indexer/client.js';
-import { parseLicenseFilterMax } from './license/classify.js';
+import { parseLicenseFilterMax, type LicenseFilter } from './license/classify.js';
 
 // Deliberate deviation: insufficient scope yields a session built WITHOUT those tools
 // (absent from tools/list; a call returns MCP method-not-found) rather than HTTP 403.
@@ -89,6 +89,78 @@ export function resolveSessionRelays(
       .map((entry) => entry.url)
       .filter((url) => !defaults.includes(url)),
     fromConnectorUrl: true,
+  };
+}
+
+/**
+ * Builds the MCP server for a session or for one standalone request.
+ *
+ * A session gets relay clients of its own, closed with it. Standalone
+ * requests (one server per HTTP request) share long-lived clients — one AMB
+ * client per relay config (`?relays=`), one calendar client — so a call does
+ * not open new WebSockets every time. Only connections are shared: scopes
+ * still decide each server's tools, and a profile with relay-mutating (write)
+ * tools never gets a shared client.
+ */
+export function createMcpServerFactory(config: {
+  ambRelays: string[];
+  ambExtraRelays: string[];
+  calendarRelays: string[];
+  spellClient?: AMBRelayClient;
+  indexer?: IndexerClient;
+  licenseFilterMax?: LicenseFilter;
+  /** Process-wide like spellClient (read only); unset → no find_community. */
+  communityClient?: AMBRelayClient;
+  /** Scopes → tool profile; the HTTP mapping (never write) unless a test injects another. */
+  profileFor?: (scopes: string[]) => ToolProfile;
+  /** `?relays=` is caller-chosen: past this many configs a request gets its own client again. */
+  maxSharedClients?: number;
+}) {
+  const maxShared = config.maxSharedClients ?? 32;
+  const shared = new Map<string, AMBRelayClient>();
+  let sharedCalendar: AMBRelayClient | undefined;
+
+  const sharedClients = (defaults: string[], extras: string[]) => {
+    const key = JSON.stringify([defaults, extras]);
+    let ambClient = shared.get(key);
+    if (!ambClient) {
+      if (shared.size >= maxShared) return undefined;
+      ambClient = new AMBRelayClient(defaults, { extraRelays: extras });
+      shared.set(key, ambClient);
+    }
+    sharedCalendar ??= new AMBRelayClient(config.calendarRelays);
+    return { ambClient, calendarClient: sharedCalendar };
+  };
+
+  return {
+    build({ scopes, query, standalone }: { scopes: string[]; query: URLSearchParams; standalone: boolean }) {
+      // Relay split: the configured defaults, or the ?relays= set named in
+      // the URL of the initialize request (session) or of the request itself.
+      const relays = resolveSessionRelays(query, {
+        defaults: config.ambRelays,
+        extras: config.ambExtraRelays,
+      });
+      const profile = (config.profileFor ?? scopesToProfile)(scopes);
+      // Shared clients only for a request that cannot mutate them; a
+      // write-capable one gets clients of its own (buildSessionServer also
+      // refuses the combination).
+      const shareable = standalone && !profile.write;
+      return buildSessionServer(relays.defaults, config.calendarRelays, profile, {
+        ambExtraRelays: relays.extras,
+        defaultsFromConnectorUrl: relays.fromConnectorUrl,
+        spellClient: config.spellClient,
+        indexer: config.indexer,
+        licenseFilterMax: config.licenseFilterMax,
+        communityClient: config.communityClient,
+        clients: shareable ? sharedClients(relays.defaults, relays.extras) : undefined,
+      });
+    },
+    close() {
+      for (const client of shared.values()) client.close();
+      shared.clear();
+      sharedCalendar?.close();
+      sharedCalendar = undefined;
+    },
   };
 }
 
@@ -207,6 +279,16 @@ async function main() {
   // not session-scoped. Unset → find_community is never registered.
   const communityClient = COMMUNITY_RELAYS?.length ? new AMBRelayClient(COMMUNITY_RELAYS) : undefined;
 
+  const factory = createMcpServerFactory({
+    ambRelays: AMB_RELAYS,
+    ambExtraRelays: AMB_EXTRA_RELAYS,
+    calendarRelays: CALENDAR_RELAYS,
+    spellClient,
+    indexer: indexer ?? undefined,
+    licenseFilterMax: LICENSE_FILTER_MAX,
+    communityClient,
+  });
+
   const handle = await startHttpServer({
     port: HTTP_PORT,
     host: HTTP_HOST,
@@ -221,29 +303,7 @@ async function main() {
     sessionIdleMs: SESSION_IDLE_MS,
     serverName: SERVER_NAME,
     serverVersion: SERVER_VERSION,
-    buildMcpServer: ({ scopes, query }) => {
-      // Per-session relay clients: each session starts from the configured
-      // defaults (or the ?relays= set its connector URL named) and can
-      // add/remove relays without affecting other sessions.
-      const relays = resolveSessionRelays(query, {
-        defaults: AMB_RELAYS,
-        extras: AMB_EXTRA_RELAYS,
-      });
-      const { server, dispose } = buildSessionServer(
-        relays.defaults,
-        CALENDAR_RELAYS,
-        scopesToProfile(scopes),
-        {
-          ambExtraRelays: relays.extras,
-          defaultsFromConnectorUrl: relays.fromConnectorUrl,
-          spellClient,
-          indexer: indexer ?? undefined,
-          licenseFilterMax: LICENSE_FILTER_MAX,
-          communityClient,
-        },
-      );
-      return { server, dispose };
-    },
+    buildMcpServer: (ctx) => factory.build(ctx),
   });
 
   console.log(`✓ nope-mcp listening at http://${HTTP_HOST}:${HTTP_PORT}/mcp`);
@@ -259,6 +319,7 @@ async function main() {
     } catch (err) {
       console.error('Error closing HTTP server:', err);
     }
+    factory.close();
     spellClient.close();
     communityClient?.close();
     process.exit(0);

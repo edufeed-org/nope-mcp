@@ -33,6 +33,12 @@ export function buildSessionServer(
     indexer?: IndexerClient;
     licenseFilterMax?: LicenseFilter;
     communityClient?: AMBRelayClient;
+    /**
+     * Long-lived relay clients to use instead of creating a pair for this
+     * server. The caller owns them: `dispose` leaves them open. Only for
+     * servers without relay-mutating tools (profile.write off).
+     */
+    clients?: { ambClient: AMBRelayClient; calendarClient: AMBRelayClient };
   },
 ): SessionServer {
   const licenseFilterMax = options?.licenseFilterMax ?? 'any';
@@ -42,10 +48,10 @@ export function buildSessionServer(
   );
   // Before registerTools: the patch only sees tools registered after it.
   instrumentToolLogging(server);
-  const ambClient = new AMBRelayClient(ambRelays, {
+  const ambClient = options?.clients?.ambClient ?? new AMBRelayClient(ambRelays, {
     extraRelays: options?.ambExtraRelays,
   });
-  const calendarClient = new AMBRelayClient(calendarRelays);
+  const calendarClient = options?.clients?.calendarClient ?? new AMBRelayClient(calendarRelays);
   registerTools(server, ambClient, calendarClient, profile, {
     defaultsFromConnectorUrl: options?.defaultsFromConnectorUrl,
     spellClient: options?.spellClient,
@@ -60,6 +66,7 @@ export function buildSessionServer(
     ambClient,
     calendarClient,
     dispose: () => {
+      if (options?.clients) return;
       ambClient.close();
       calendarClient.close();
     },
