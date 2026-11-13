@@ -40,7 +40,7 @@ const conceptSchema = z.object({
     .record(z.string(), z.string())
     .optional()
     .describe('Localized labels (e.g., {"de": "Video", "en": "Video"})'),
-});
+}).meta({ additionalProperties: false }); // closed in tools/list; unknown keys are still dropped
 
 /**
  * Schema for entity input (creator, publisher)
@@ -49,7 +49,7 @@ const entitySchema = z.object({
   name: z.string().describe('Name of the person or organization'),
   type: z.string().optional().describe('Type (default: Person)'),
   id: z.string().optional().describe('URL or identifier'),
-});
+}).meta({ additionalProperties: false }); // closed in tools/list; unknown keys are still dropped
 
 /**
  * Register sign_event tool
@@ -160,7 +160,7 @@ function registerPublishEventTool(server: McpServer): void {
           tags: z.array(z.array(z.string())).describe('Event tags'),
           content: z.string().describe('Event content'),
           sig: z.string().describe('Event signature'),
-        }).describe('Signed Nostr event'),
+        }).meta({ additionalProperties: false }).describe('Signed Nostr event'),
         relays: z
           .array(z.string())
           .optional()
@@ -401,6 +401,7 @@ function registerCreateAndPublishResourceTool(server: McpServer): void {
             id: z.string().describe('License URL'),
             name: z.string().optional().describe('License name'),
           })
+          .meta({ additionalProperties: false })
           .optional()
           .describe('License information'),
         isAccessibleForFree: z

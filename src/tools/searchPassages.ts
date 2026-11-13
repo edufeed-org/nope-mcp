@@ -432,7 +432,7 @@ export function registerSearchPassagesTool(
         spell: z.string().optional().describe('Published spell: nevent, note id, or 64-hex event id.'),
         authors: z.array(z.string()).optional().describe('Inline scope: Nostr event-author pubkeys (hex/npub/$me/$contacts) — resolve names via resolve_author. NOT for metadata publishers; those go into `search`.'),
         kinds: z.array(z.number()).optional().describe('Inline scope: content kinds (e.g. 30142).'),
-        tag: z.object({ letter: z.string(), values: z.array(z.string()) }).optional()
+        tag: z.object({ letter: z.string(), values: z.array(z.string()) }).meta({ additionalProperties: false }).optional()
           .describe('Inline scope: one tag filter, e.g. {letter:"h", values:["<community-pk>"]}.'),
         search: z.string().optional().describe('Inline scope: NIP-50 term selecting the EVENTS in scope (distinct from question). Supports field filters; quote multi-word values: publisher.name:"LEHRE LADEN".'),
         since: z.string().optional().describe('Inline scope: absolute Unix seconds or relative (7d, 1mo, now).'),

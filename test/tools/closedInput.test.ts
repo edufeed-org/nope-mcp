@@ -28,6 +28,17 @@ describe('tool input schemas', () => {
     expect(tools.map((t) => t.name)).toEqual(expect.arrayContaining(['search_passages', 'find_community', 'add_relay', 'extract_metadata']));
     const open = tools.filter((t) => t.inputSchema.additionalProperties !== false).map((t) => t.name);
     expect(open).toEqual([]);
+
+    // nested argument objects (search_passages' tag, publish_event's event …) are closed too
+    const openNested: string[] = [];
+    const walk = (node: unknown, path: string) => {
+      if (!node || typeof node !== 'object') return;
+      const o = node as Record<string, unknown>;
+      if (o.type === 'object' && o.properties && o.additionalProperties !== false) openNested.push(path);
+      for (const [k, v] of Object.entries(o)) walk(v, `${path}/${k}`);
+    };
+    for (const t of tools) walk(t.inputSchema, t.name);
+    expect(openNested).toEqual([]);
     await client.close();
     session.dispose();
   });
