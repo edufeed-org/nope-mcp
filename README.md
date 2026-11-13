@@ -155,7 +155,8 @@ node dist/http.js     # production (after `npm run build`)
 
 The server exposes:
 
-- `POST /` and `POST /mcp` — JSON-RPC requests (initialize, tool calls, etc.), same session map
+- `POST /` and `POST /mcp` — JSON-RPC requests (initialize, tool calls, etc.), same session map;
+  without `Mcp-Session-Id` a non-initialize request is served standalone (see below)
 - `GET /` and `GET /mcp` — server-push SSE stream for the current session
 - `GET /` (plain browser request — no `Mcp-Session-Id`, no `Accept: text/event-stream`) — a small
   JSON info document (`name`, `version`, `mcp`, `docs`, `transport`) instead of the MCP 404;
@@ -185,6 +186,26 @@ curl http://localhost:3000/mcp -X POST \
 #   -H "Authorization: Bearer $ACCESS_TOKEN"
 # (scopes are fixed at session init; a token on later requests does not upgrade the session)
 ```
+
+**Without a session.** A `POST` that carries no `Mcp-Session-Id` and is not
+`initialize` is answered on its own — no handshake, nothing to keep or delete,
+and any number of them may run in parallel. Scopes come from the token of that
+request, `?relays=` from its URL. The answer arrives as an SSE stream
+(`data: {…}` holds the JSON-RPC response); closing the connection cancels the call.
+
+```bash
+curl http://localhost:3000/mcp -X POST \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'MCP-Protocol-Version: 2025-11-25' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_relays","arguments":{}}}'
+```
+
+This is the MCP SDK's stateless mode, an interim step towards spec revision
+`2026-07-28` (no sessions at all), which the 1.x SDK does not implement: the
+`io.modelcontextprotocol/*` fields in `_meta` are accepted but ignored, an
+`MCP-Protocol-Version: 2026-07-28` header is refused with 400, and there is no
+`server/discover`.
 
 Smoke-test with [MCP Inspector](https://github.com/modelcontextprotocol/inspector):
 
