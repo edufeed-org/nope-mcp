@@ -10,6 +10,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 
 import { AMBRelayClient } from './relay/client.js';
+import { startRulesRefresh } from './search/rulesStore.js';
 import { registerTools } from './tools/index.js';
 import { registerResources } from './resources/index.js';
 import { loadAuthorSets, setAuthorDirectory, setCalendarAuthorDirectory } from './authors.js';
@@ -67,6 +68,9 @@ async function main() {
     registerResources(server, ambClient);
     return server;
   };
+
+  // Search rules shared with the relays (kind-30078 event); unset = built-in rules.
+  startRulesRefresh(process.env.SEARCH_RULES, AMB_RELAYS);
 
   // Load known authors from follow sets if configured
   if (AMB_AUTHOR_SETS.length > 0) {
