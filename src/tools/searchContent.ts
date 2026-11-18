@@ -8,6 +8,7 @@ import { buildContentFilter, type ContentSearchParams } from '../relay/filters.j
 import { transformContentEvent } from '../content/transform.js';
 import { parseSnippets, attachSnippets, SNIPPET_KIND } from '../content/snippet.js';
 import { rankResults } from '../content/rank.js';
+import { getEventRelay } from '../relay/provenance.js';
 import { assertPublicRelayUrl, assertResolvesPublic, understandsHints } from '../relay/capabilities.js';
 import { parseIntent, toSearchString, levelFit, activeRules } from '../search/intent.js';
 import type { SimplifiedContentResult, ResourceResult } from '../content/types.js';
@@ -56,7 +57,9 @@ export async function runContentSearch(
   const language = params.language ?? 'de';
   // Level, grade and type words leave the text and go to the relays as
   // prefer.* hints; the same intent orders the merged list below.
-  const intent = parseIntent(params.query ?? '', activeRules());
+  // Level, grade and type are statements about learning resources (kind 30142).
+  const reachesResources = !params.types?.length || params.types.includes('resource');
+  const intent = parseIntent(params.query ?? '', activeRules(), reachesResources);
   const hinted = toSearchString(intent);
   const interpreted = hinted !== (params.query ?? '');
   const filter = buildContentFilter(interpreted ? { ...params, query: hinted } : params);
@@ -82,7 +85,17 @@ export async function runContentSearch(
     ...(extraRelays.length ? { extraRelays, searchFor: (url: string) => (plain.has(url) ? plainSearch : undefined) } : {}),
   });
 
-  const snippetEvents = events.filter((e) => e.kind === SNIPPET_KIND);
+  // A relay the caller named may only attach a passage to a hit it delivered
+  // itself: otherwise it could put its own text and source URL on a result
+  // that came from a trusted relay.
+  const deliveredBy = new Map(events.filter((e) => e.kind !== SNIPPET_KIND).map((e) => [e.id, getEventRelay(e)]));
+  const snippetEvents = events.filter((e) => {
+    if (e.kind !== SNIPPET_KIND) return false;
+    const relay = getEventRelay(e);
+    if (!relay || !extraRelays.includes(relay)) return true;
+    const parent = e.tags.find((t) => t[0] === 'e')?.[1];
+    return parent !== undefined && deliveredBy.get(parent) === relay;
+  });
 
   // One pass: transform in relay order, skipping invalid events, and keep the
   // surviving source events in lock-step so result[i] ↔ keptEvents[i] for
@@ -139,7 +152,9 @@ export async function runContentSearch(
   return {
     total: ranked.length,
     results: ranked,
-    ...(interpreted ? { interpretation: { text: intent.text, levels: intent.levels, grade: intent.grade, types: intent.types } } : {}),
+    ...(intent.levels.length || intent.grade || intent.types.length
+      ? { interpretation: { text: intent.text, levels: intent.levels, grade: intent.grade, types: intent.types } }
+      : {}),
     ...relayDiagnosticsFields(diag),
     licenseFilter: effective,
     ...(clamped ? { licenseFilterClamped: true as const } : {}),

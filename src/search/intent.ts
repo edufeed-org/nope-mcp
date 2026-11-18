@@ -146,9 +146,10 @@ const addAll = (to: string[], ids: string[]) => {
  * Take level, grade, type, school-context and command words plus stopwords
  * out of the free text. Phrases and field tokens pass through verbatim. A
  * query that would have no free text left, or that already carries `prefer.*`
- * hints, is returned unchanged with an empty intent.
+ * hints, is returned unchanged with an empty intent. With `words` false only
+ * stopwords are stripped (a search that cannot return learning resources).
  */
-export function parseIntent(query: string, rules: SearchRules): Intent {
+export function parseIntent(query: string, rules: SearchRules, words = true): Intent {
   const unchanged: Intent = { text: query, levels: [], types: [] };
   const tokens = rawTokens(query);
   if (tokens.some((t) => t.startsWith('prefer.') && isFieldFilterToken(t))) return unchanged;
@@ -166,6 +167,14 @@ export function parseIntent(query: string, rules: SearchRules): Intent {
     }
     const w = norm(i);
     const next = norm(i + 1);
+    if (!words) {
+      // stopwords only: level and type say nothing about the kinds searched
+      if (w !== '' && !rules.stopwords.has(w)) {
+        kept.push(trimWord(tok));
+        hasFree = true;
+      }
+      continue;
+    }
     if (rules.gradeWords.has(w) && /^\d+$/.test(next) && +next >= 1 && +next <= 13) {
       intent.grade = String(+next);
       for (const r of rules.gradeImplies) if (+next >= r.from && +next <= r.to) addAll(intent.levels, r.concepts);
@@ -173,7 +182,7 @@ export function parseIntent(query: string, rules: SearchRules): Intent {
       continue;
     }
     const phrase = rules.levelPhrases.get(w)?.get(next);
-    if (phrase) {
+    if (phrase?.length) {
       addAll(intent.levels, phrase);
       i++;
       continue;

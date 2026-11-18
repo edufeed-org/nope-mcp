@@ -508,6 +508,11 @@ export class AMBRelayClient {
       return events;
     });
     clearTimeout(timeoutHandle); // avoid a dangling timer when the race's other branch won
+    // Relays a caller named are for this query only: close them, or every
+    // new hostname would leave a socket open until the process restarts.
+    // (On a strict-mode throw above they stay open until close().)
+    const namedByCaller = relays.filter((u) => !configured.includes(u));
+    if (namedByCaller.length) this.extraPool?.close(namedByCaller);
 
     if (opts?.diag) {
       opts.diag.unreachable = unreachable;

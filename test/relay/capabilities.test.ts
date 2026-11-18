@@ -39,7 +39,9 @@ describe('understandsHints', () => {
 describe('assertResolvesPublic', () => {
   const to = (...addresses: string[]) => async () => addresses.map((address) => ({ address, family: address.includes(':') ? 6 : 4 }));
   it('rejects a public name that resolves to a private, loopback or link-local address', async () => {
-    for (const addr of ['127.0.0.1', '10.1.2.3', '172.16.0.9', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fe80::1', 'fd00::1', '::ffff:10.0.0.1']) {
+    for (const addr of ['127.0.0.1', '10.1.2.3', '172.16.0.9', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fe80::1', 'fd00::1', '::ffff:10.0.0.1',
+      // translation and transition prefixes that reach IPv4 space, and the hex form of a mapped address
+      '64:ff9b::a9fe:a9fe', '2002:a00:1::1', '::10.0.0.1', 'fec0::1', '::ffff:a00:1']) {
       await expect(assertResolvesPublic('wss://relay.example.org', to(addr)), addr).rejects.toThrow();
     }
   });
@@ -76,5 +78,15 @@ describe('safeLookup pins the connection to a checked address', () => {
   it('hands the checked addresses to the socket', async () => {
     expect((await run(makeSafeLookup(resolver('93.184.216.34')), true)).res).toEqual([{ address: '93.184.216.34', family: 4 }]);
     expect((await run(makeSafeLookup(resolver('93.184.216.34')), false)).res).toBe('93.184.216.34');
+  });
+});
+
+describe('understandsHints cache', () => {
+  it('asks once per host whatever path or query the caller appends, and only the root document', async () => {
+    const asked: string[] = [];
+    const f = (async (u: string) => (asked.push(String(u)), new Response('{}'))) as unknown as typeof fetch;
+    await understandsHints('wss://cache.example.org/?1', f);
+    await understandsHints('wss://cache.example.org/any/path?2', f);
+    expect(asked).toEqual(['https://cache.example.org/']);
   });
 });

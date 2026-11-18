@@ -38,7 +38,11 @@ for (const [net, bits] of [
 ] as [string, number][]) {
   NON_PUBLIC.addSubnet(net, bits, 'ipv4');
 }
-for (const [net, bits] of [['::', 127], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8]] as [string, number][]) {
+for (const [net, bits] of [
+  ['::', 96], // unspecified, loopback and IPv4-compatible addresses
+  ['64:ff9b::', 96], ['2002::', 16], // NAT64 and 6to4 reach IPv4 space
+  ['fc00::', 7], ['fe80::', 10], ['fec0::', 10], ['ff00::', 8],
+] as [string, number][]) {
   NON_PUBLIC.addSubnet(net, bits, 'ipv6');
 }
 
@@ -66,8 +70,8 @@ export async function assertResolvesPublic(url: string, lookupFn: Lookup = dnsLo
 function assertPublicAddresses(host: string, addresses: { address: string; family: number }[]): void {
   if (addresses.length === 0) throw new Error(`extraRelays: ${host} does not resolve`);
   for (const { address } of addresses) {
-    const mapped = address.toLowerCase().startsWith('::ffff:') ? address.slice(7) : address;
-    if (NON_PUBLIC.check(mapped, isIP(mapped) === 6 ? 'ipv6' : 'ipv4')) {
+    // BlockList matches IPv4-mapped IPv6 addresses against the IPv4 rules itself.
+    if (NON_PUBLIC.check(address, isIP(address) === 6 ? 'ipv6' : 'ipv4')) {
       throw new Error(`extraRelays: ${host} does not resolve to a public address`);
     }
   }
@@ -98,10 +102,10 @@ export function makeSafeLookup(lookupFn: Lookup = dnsLookup) {
   };
 }
 
-/** NIP-11 document over https with the checking lookup, no redirects, at most 64 kB. */
+/** NIP-11 document over https with the checking lookup: no redirects, at most 64 kB, at most 3 s in total. */
 const fetchNip11: typeof fetch = ((url: string) =>
   new Promise<Response>((resolve, reject) => {
-    const req = httpsGet(url, { headers: { Accept: 'application/nostr+json' }, lookup: makeSafeLookup() as never, timeout: 3000 }, (res) => {
+    const req = httpsGet(url, { headers: { Accept: 'application/nostr+json' }, lookup: makeSafeLookup() as never }, (res) => {
       const chunks: Buffer[] = [];
       let size = 0;
       res.on('data', (c: Buffer) => {
@@ -110,13 +114,20 @@ const fetchNip11: typeof fetch = ((url: string) =>
         else chunks.push(c);
       });
       res.on('end', () => resolve(new Response(Buffer.concat(chunks), { status: res.statusCode ?? 500 })));
+      // a body that stops short of its announced length never emits 'end'
+      res.on('close', () => reject(new Error('NIP-11 response closed early')));
+      res.on('error', reject);
     });
-    req.on('timeout', () => req.destroy(new Error('NIP-11 timeout')));
+    // A hard limit on the whole exchange: a server that trickles bytes must
+    // not hold a search open (a socket idle timeout would not catch that).
+    const timer = setTimeout(() => req.destroy(new Error('NIP-11 timeout')), 3000);
+    req.on('close', () => clearTimeout(timer));
     req.on('error', reject);
   })) as unknown as typeof fetch;
 
 const cache = new Map<string, { at: number; value: boolean }>();
 const TTL_MS = 3_600_000;
+const MAX_CACHED_HOSTS = 500;
 
 /**
  * Whether the relay advertises the prefer.* hints in its NIP-11 document
@@ -125,11 +136,14 @@ const TTL_MS = 3_600_000;
  * the plain search text.
  */
 export async function understandsHints(url: string, fetchFn: typeof fetch = fetchNip11): Promise<boolean> {
-  const hit = cache.get(url);
+  // Per host, and only the root document: a caller must not turn this into
+  // GET requests to paths of its choosing or grow the cache with query strings.
+  const origin = `https://${new URL(url).host}/`;
+  const hit = cache.get(origin);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.value;
   let value = false;
   try {
-    const res = await fetchFn(url.replace(/^wss:/, 'https:'), {
+    const res = await fetchFn(origin, {
       headers: { Accept: 'application/nostr+json' },
       signal: AbortSignal.timeout(3000),
       redirect: 'manual', // a redirect could lead anywhere, including into a private network
@@ -143,6 +157,7 @@ export async function understandsHints(url: string, fetchFn: typeof fetch = fetc
   } catch {
     value = false;
   }
-  cache.set(url, { at: Date.now(), value });
+  if (cache.size >= MAX_CACHED_HOSTS) cache.clear();
+  cache.set(origin, { at: Date.now(), value });
   return value;
 }

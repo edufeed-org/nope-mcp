@@ -141,3 +141,18 @@ describe('rankResults merges relays by rank and level fit, not by raw scores', (
     expect(ids(rankResults([item('a1', 'A'), item('a2', 'A')], 'Bruchrechnung', 10))).toEqual(['a1', 'a2']);
   });
 });
+
+describe('rankResults review findings', () => {
+  const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
+  it('a passage hit without a title match is not buried under description matches', () => {
+    const passage = { id: 'passage', relay: 'A', title: 'Biologie Arbeitsheft 7', score: 0.7 };
+    const others = [0, 1, 2, 3, 4].map((n) => ({ id: 'heft' + n, relay: 'B', title: 'Heft ' + n, description: 'Photosynthese' }));
+    expect(ids(rankResults([passage, ...others], 'Photosynthese', 3))).toContain('passage');
+  });
+  it('applies level fit even when the remaining text has no rank token', () => {
+    const other = { id: 'other', relay: 'A', title: 'KI im Unterricht' };
+    const grade6 = { id: 'grade6', relay: 'A', title: 'KI für Klasse 6' };
+    const fit = new Map([[other, 0], [grade6, 3]]);
+    expect(ids(rankResults([other, grade6], 'ki', 10, false, (i) => fit.get(i)!))).toEqual(['grade6', 'other']);
+  });
+});
