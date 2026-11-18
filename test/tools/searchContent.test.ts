@@ -389,13 +389,15 @@ describe('runContentSearch with extra relays', () => {
     const calls: { filter: Filter; opts?: { extraRelays?: string[]; searchFor?: (url: string) => string | undefined } }[] = [];
     return { calls, client: { queryEvents: async (filter: Filter, _sel?: string[], opts?: any) => (calls.push({ filter, opts }), []) } };
   }
+  const publicIp = async () => [{ address: '93.184.216.34', family: 4 }];
+  const privateIp = async () => [{ address: '10.0.0.7', family: 4 }];
   const noHints = (async () => new Response('{}')) as unknown as typeof fetch;
   const hints = (async () => new Response(JSON.stringify({ nip50: ['ext prefer.level'] }))) as unknown as typeof fetch;
 
   it('sends plain text to an extra relay without hint support and hints to one with', async () => {
     const { calls, client } = recording();
     await runContentSearch(client, { query: 'Bruchrechnung Klasse 6', extraRelays: ['wss://plain.example.org', 'wss://smart.example.org'] },
-      { fetchFn: (async (url: string) => (String(url).includes('smart') ? hints(url) : noHints(url))) as unknown as typeof fetch });
+      { lookupFn: publicIp, fetchFn: (async (url: string) => (String(url).includes('smart') ? hints(url) : noHints(url))) as unknown as typeof fetch });
     const { filter, opts } = calls[0];
     expect(opts?.extraRelays).toEqual(['wss://plain.example.org', 'wss://smart.example.org']);
     expect(opts?.searchFor?.('wss://plain.example.org')).toBe('Bruchrechnung');
@@ -408,5 +410,7 @@ describe('runContentSearch with extra relays', () => {
     const { client } = recording();
     await expect(runContentSearch(client, { query: 'x', extraRelays: ['wss://a.example.org', 'wss://b.example.org', 'wss://c.example.org', 'wss://d.example.org'] })).rejects.toThrow(/3/);
     await expect(runContentSearch(client, { query: 'x', extraRelays: ['wss://10.0.0.1'] })).rejects.toThrow();
+    // a public-looking name that resolves into a private network
+    await expect(runContentSearch(client, { query: 'x', extraRelays: ['wss://rebind.example.org'] }, { lookupFn: privateIp })).rejects.toThrow(/public/);
   });
 });

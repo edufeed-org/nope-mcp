@@ -8,7 +8,7 @@ import { buildContentFilter, type ContentSearchParams } from '../relay/filters.j
 import { transformContentEvent } from '../content/transform.js';
 import { parseSnippets, attachSnippets, SNIPPET_KIND } from '../content/snippet.js';
 import { rankResults } from '../content/rank.js';
-import { assertPublicRelayUrl, understandsHints } from '../relay/capabilities.js';
+import { assertPublicRelayUrl, assertResolvesPublic, understandsHints } from '../relay/capabilities.js';
 import { parseIntent, toSearchString, levelFit, activeRules } from '../search/intent.js';
 import type { SimplifiedContentResult, ResourceResult } from '../content/types.js';
 import { READ_ONLY } from './annotations.js';
@@ -40,7 +40,7 @@ const MAX_EXTRA_RELAYS = 3;
 export async function runContentSearch(
   client: Pick<AMBRelayClient, 'queryEvents'>,
   params: ContentSearchParams & { language?: string; relays?: string[]; extraRelays?: string[]; licenseFilter?: LicenseFilter },
-  opts: { licenseFilterMax?: LicenseFilter; fetchFn?: typeof fetch } = {}
+  opts: { licenseFilterMax?: LicenseFilter; fetchFn?: typeof fetch; lookupFn?: Parameters<typeof assertResolvesPublic>[1] } = {}
 ): Promise<{
   total: number;
   results: SimplifiedContentResult[];
@@ -71,6 +71,7 @@ export async function runContentSearch(
   const extraRelays = params.extraRelays ?? [];
   if (extraRelays.length > MAX_EXTRA_RELAYS) throw new Error(`extraRelays: at most ${MAX_EXTRA_RELAYS} relays per search`);
   extraRelays.forEach(assertPublicRelayUrl);
+  await Promise.all(extraRelays.map((url) => assertResolvesPublic(url, opts.lookupFn)));
   const plain = new Set<string>();
   if (interpreted) {
     await Promise.all(extraRelays.map(async (url) => (await understandsHints(url, opts.fetchFn)) || plain.add(url)));
