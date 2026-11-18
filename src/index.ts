@@ -12,6 +12,7 @@ import {
   PrivateKeySigner,
   ApplesauceRelayPool,
   EncryptionMode,
+  GiftWrapMode,
 } from '@contextvm/sdk';
 
 import { AMBRelayClient } from './relay/client.js';
@@ -124,7 +125,12 @@ async function main() {
       about: 'Query educational resources (AMB metadata) from Nostr relays. Supports full-text search and filtering by subject, resource type, educational level, and more.',
     },
     isPublicServer: false,
+    // The SDK would publish a kind-10002 relay list to public bootstrap relays
+    // by default. This server is found by its configured pubkey, not announced.
+    publishRelayList: false,
     encryptionMode: EncryptionMode.OPTIONAL,
+    // Encrypted traffic as ephemeral gift wraps (kind 21059): a transport relay stores nothing.
+    giftWrapMode: GiftWrapMode.EPHEMERAL,
     injectClientPubkey: true,
   });
 
