@@ -5,6 +5,7 @@
  */
 import { BlockList, isIP } from 'node:net';
 import { lookup } from 'node:dns/promises';
+import { get as httpsGet } from 'node:https';
 
 /**
  * Throws unless url is a public wss relay address: wss scheme, a hostname
@@ -48,7 +49,8 @@ const dnsLookup: Lookup = (host) => lookup(host, { all: true });
  * Throws unless every address the relay's hostname resolves to is public. A
  * public-looking name can point into a private network; an anonymous caller
  * must not get this server to connect there.
- * shortcut: the connection is not pinned to the checked address, so a DNS answer that changes between this check and the connect (rebinding) is not caught; pin via a custom lookup when the WebSocket library allows it.
+ * This is the early, readable error. The connections themselves use
+ * makeSafeLookup, so the address that was checked is the one connected to.
  */
 export async function assertResolvesPublic(url: string, lookupFn: Lookup = dnsLookup): Promise<void> {
   const host = new URL(url).hostname;
@@ -58,13 +60,60 @@ export async function assertResolvesPublic(url: string, lookupFn: Lookup = dnsLo
   } catch {
     throw new Error(`extraRelays: ${host} does not resolve`);
   }
+  assertPublicAddresses(host, addresses);
+}
+
+function assertPublicAddresses(host: string, addresses: { address: string; family: number }[]): void {
   if (addresses.length === 0) throw new Error(`extraRelays: ${host} does not resolve`);
   for (const { address } of addresses) {
     const mapped = address.toLowerCase().startsWith('::ffff:') ? address.slice(7) : address;
-    const family = isIP(mapped) === 6 ? 'ipv6' : 'ipv4';
-    if (NON_PUBLIC.check(mapped, family)) throw new Error(`extraRelays: ${host} does not resolve to a public address`);
+    if (NON_PUBLIC.check(mapped, isIP(mapped) === 6 ? 'ipv6' : 'ipv4')) {
+      throw new Error(`extraRelays: ${host} does not resolve to a public address`);
+    }
   }
 }
+
+type LookupCallback = (err: Error | null, address?: string | { address: string; family: number }[], family?: number) => void;
+
+/**
+ * A `lookup` for node's net/tls/http(s) and for `ws`: resolves the name,
+ * rejects it when any address is non-public, and hands the socket exactly the
+ * addresses it checked. This closes the gap a separate pre-check leaves (a
+ * DNS answer that changes between check and connect).
+ */
+export function makeSafeLookup(lookupFn: Lookup = dnsLookup) {
+  return (hostname: string, options: { all?: boolean } | number | undefined, callback: LookupCallback): void => {
+    lookupFn(hostname).then(
+      (addresses) => {
+        try {
+          assertPublicAddresses(hostname, addresses);
+        } catch (err) {
+          return callback(err as Error);
+        }
+        if (typeof options === 'object' && options?.all) callback(null, addresses);
+        else callback(null, addresses[0].address, addresses[0].family);
+      },
+      () => callback(new Error(`extraRelays: ${hostname} does not resolve`))
+    );
+  };
+}
+
+/** NIP-11 document over https with the checking lookup, no redirects, at most 64 kB. */
+const fetchNip11: typeof fetch = ((url: string) =>
+  new Promise<Response>((resolve, reject) => {
+    const req = httpsGet(url, { headers: { Accept: 'application/nostr+json' }, lookup: makeSafeLookup() as never, timeout: 3000 }, (res) => {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      res.on('data', (c: Buffer) => {
+        size += c.length;
+        if (size > 65536) req.destroy(new Error('NIP-11 document too large'));
+        else chunks.push(c);
+      });
+      res.on('end', () => resolve(new Response(Buffer.concat(chunks), { status: res.statusCode ?? 500 })));
+    });
+    req.on('timeout', () => req.destroy(new Error('NIP-11 timeout')));
+    req.on('error', reject);
+  })) as unknown as typeof fetch;
 
 const cache = new Map<string, { at: number; value: boolean }>();
 const TTL_MS = 3_600_000;
@@ -75,7 +124,7 @@ const TTL_MS = 3_600_000;
  * per hour and URL; any error counts as "no", so an unknown relay just gets
  * the plain search text.
  */
-export async function understandsHints(url: string, fetchFn: typeof fetch = fetch): Promise<boolean> {
+export async function understandsHints(url: string, fetchFn: typeof fetch = fetchNip11): Promise<boolean> {
   const hit = cache.get(url);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.value;
   let value = false;

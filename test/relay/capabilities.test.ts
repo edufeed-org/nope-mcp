@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { assertPublicRelayUrl, assertResolvesPublic, understandsHints } from '../../src/relay/capabilities.js';
+import { assertPublicRelayUrl, assertResolvesPublic, makeSafeLookup, understandsHints } from '../../src/relay/capabilities.js';
 
 describe('assertPublicRelayUrl', () => {
   it('rejects relay URLs that are not public wss', () => {
@@ -61,5 +61,20 @@ describe('understandsHints does not follow redirects', () => {
     const redirecting = (async (_u: string, i?: RequestInit) => ((init = i), new Response(null, { status: 302, headers: { location: 'http://10.0.0.1/' } }))) as unknown as typeof fetch;
     expect(await understandsHints('wss://redirect.example.org', redirecting)).toBe(false);
     expect(init?.redirect).toBe('manual');
+  });
+});
+
+describe('safeLookup pins the connection to a checked address', () => {
+  const resolver = (...addresses: string[]) => async () => addresses.map((address) => ({ address, family: address.includes(':') ? 6 : 4 }));
+  const run = (lookupFn: ReturnType<typeof makeSafeLookup>, all: boolean) =>
+    new Promise<{ err: Error | null; res: unknown }>((resolve) => lookupFn('relay.example.org', { all }, (err, res) => resolve({ err, res })));
+
+  it('fails the connection when the name resolves to a non-public address', async () => {
+    const { err } = await run(makeSafeLookup(resolver('93.184.216.34', '10.0.0.1')), true);
+    expect(err).toBeInstanceOf(Error);
+  });
+  it('hands the checked addresses to the socket', async () => {
+    expect((await run(makeSafeLookup(resolver('93.184.216.34')), true)).res).toEqual([{ address: '93.184.216.34', family: 4 }]);
+    expect((await run(makeSafeLookup(resolver('93.184.216.34')), false)).res).toBe('93.184.216.34');
   });
 });

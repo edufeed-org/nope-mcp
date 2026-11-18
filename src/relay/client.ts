@@ -1,6 +1,7 @@
 import { SimplePool, type Filter, type NostrEvent } from 'nostr-tools';
 import { normalizeURL } from 'nostr-tools/utils';
 import WebSocket from 'ws';
+import { makeSafeLookup } from './capabilities.js';
 import { namesFor } from './catalog.js';
 import { makeEventCollector } from './provenance.js';
 
@@ -9,6 +10,13 @@ import { makeEventCollector } from './provenance.js';
 // module-local variable that's only seeded from globalThis.WebSocket at load
 // time, and `nostr-tools/relay`'s `useWebSocketImplementation` does NOT reach
 // it. The reliable fix is to pass the impl explicitly per construction.
+/** `ws` socket that resolves its host through the checking lookup: public addresses only. */
+class PublicOnlyWebSocket extends WebSocket {
+  constructor(url: string | URL, protocols?: string | string[]) {
+    super(url, protocols, { lookup: makeSafeLookup() as never });
+  }
+}
+
 const WS_IMPL: typeof globalThis.WebSocket =
   (globalThis as { WebSocket?: typeof globalThis.WebSocket }).WebSocket ??
   (WebSocket as unknown as typeof globalThis.WebSocket);
@@ -132,6 +140,8 @@ export function isStandardTagFilter(key: string): boolean {
 
 export class AMBRelayClient {
   private pool: SimplePool;
+  /** Pool for relays a caller named for one query: its sockets only connect to public addresses. */
+  private extraPool?: SimplePool;
   private relayUrls: Set<string>;
   private extraRelayUrls: Set<string>;
 
@@ -359,7 +369,17 @@ export class AMBRelayClient {
     }
   ): Promise<NostrEvent[]> {
     const strict = opts?.strict ?? false;
-    const relays = [...new Set([...this.resolveRelays(relaySelection), ...(opts?.extraRelays ?? [])])];
+    const configured = this.resolveRelays(relaySelection);
+    const relays = [...new Set([...configured, ...(opts?.extraRelays ?? [])])];
+    // A relay named by the caller goes through a pool whose sockets refuse
+    // non-public addresses at connect time (capabilities.ts, makeSafeLookup).
+    const poolFor = (url: string): SimplePool => {
+      if (configured.includes(url)) return this.pool;
+      this.extraPool ??= new SimplePool({
+        websocketImplementation: PublicOnlyWebSocket,
+      } as unknown as ConstructorParameters<typeof SimplePool>[0]);
+      return this.extraPool;
+    };
     if (relays.length === 0) {
       if (strict) throw new RelayUnreachableError(relaySelection ?? [], 'no relays in selection');
       if (opts?.diag) opts.diag.unreachable = relaySelection ?? [];
@@ -401,7 +421,7 @@ export class AMBRelayClient {
       new Promise<NostrEvent[]>(async (resolve, reject) => {
         for (const url of relays) {
           try {
-            await this.pool.ensureRelay(url);
+            await poolFor(url).ensureRelay(url);
             connectedRelays.push(url);
           } catch {
             unreachable.push(url);
@@ -433,7 +453,7 @@ export class AMBRelayClient {
         };
 
         for (const url of connectedRelays) {
-          const relay = await this.pool.ensureRelay(url);
+          const relay = await poolFor(url).ensureRelay(url);
 
           // prepareSubscription creates the sub and registers it, but
           // doesn't send the REQ yet — that happens on fire().
@@ -642,5 +662,6 @@ export class AMBRelayClient {
     // destroy(), not close(selectable): also drops relays opened for a query
     // outside the current set (removed via remove_relay, explicit relay args).
     this.pool.destroy();
+    this.extraPool?.destroy();
   }
 }
