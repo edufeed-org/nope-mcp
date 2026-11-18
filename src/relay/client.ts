@@ -140,8 +140,6 @@ export function isStandardTagFilter(key: string): boolean {
 
 export class AMBRelayClient {
   private pool: SimplePool;
-  /** Pool for relays a caller named for one query: its sockets only connect to public addresses. */
-  private extraPool?: SimplePool;
   private relayUrls: Set<string>;
   private extraRelayUrls: Set<string>;
 
@@ -373,13 +371,19 @@ export class AMBRelayClient {
     const relays = [...new Set([...configured, ...(opts?.extraRelays ?? [])])];
     // A relay named by the caller goes through a pool whose sockets refuse
     // non-public addresses at connect time (capabilities.ts, makeSafeLookup).
+    // The pool lives for this call only: a shared one would let one query
+    // close the relay another concurrent query is still reading from.
+    let extraPool: SimplePool | undefined;
     const poolFor = (url: string): SimplePool => {
       if (configured.includes(url)) return this.pool;
-      this.extraPool ??= new SimplePool({
+      extraPool ??= new SimplePool({
         websocketImplementation: PublicOnlyWebSocket,
       } as unknown as ConstructorParameters<typeof SimplePool>[0]);
-      return this.extraPool;
+      return extraPool;
     };
+    // A relay may send far more than was asked for. Each result may be
+    // followed by one kind-21142 snippet, hence 2 x (2 x limit).
+    const maxEventsPerRelay = 4 * (filter.limit ?? 250);
     if (relays.length === 0) {
       if (strict) throw new RelayUnreachableError(relaySelection ?? [], 'no relays in selection');
       if (opts?.diag) opts.diag.unreachable = relaySelection ?? [];
@@ -465,9 +469,17 @@ export class AMBRelayClient {
           // timeout — silently truncating slow-but-answering relays well
           // before this method's real deadline.
           const search = opts?.searchFor?.(url);
+          let received = 0;
           const sub = relay.prepareSubscription([search === undefined ? filter : { ...filter, search }], {
             eoseTimeout: this.queryTimeoutMs,
-            onevent: (event: NostrEvent) => collector.onevent(event, url),
+            onevent: (event: NostrEvent) => {
+              if (++received > maxEventsPerRelay) {
+                sub.close('too many events');
+                settleRelay(url);
+                return;
+              }
+              collector.onevent(event, url);
+            },
             oneose: () => {
               sub.close('eose');
               settleRelay(url);
@@ -506,13 +518,12 @@ export class AMBRelayClient {
         throw new RelayUnreachableError(relays, 'query timed out before EOSE');
       }
       return events;
-    });
+    })
+      // Relays a caller named are for this query only: drop their sockets on
+      // every path (also a strict-mode throw), or each new hostname would
+      // leave one open until the process restarts.
+      .finally(() => extraPool?.destroy());
     clearTimeout(timeoutHandle); // avoid a dangling timer when the race's other branch won
-    // Relays a caller named are for this query only: close them, or every
-    // new hostname would leave a socket open until the process restarts.
-    // (On a strict-mode throw above they stay open until close().)
-    const namedByCaller = relays.filter((u) => !configured.includes(u));
-    if (namedByCaller.length) this.extraPool?.close(namedByCaller);
 
     if (opts?.diag) {
       opts.diag.unreachable = unreachable;
@@ -667,6 +678,5 @@ export class AMBRelayClient {
     // destroy(), not close(selectable): also drops relays opened for a query
     // outside the current set (removed via remove_relay, explicit relay args).
     this.pool.destroy();
-    this.extraPool?.destroy();
   }
 }

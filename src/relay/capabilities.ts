@@ -103,9 +103,9 @@ export function makeSafeLookup(lookupFn: Lookup = dnsLookup) {
 }
 
 /** NIP-11 document over https with the checking lookup: no redirects, at most 64 kB, at most 3 s in total. */
-const fetchNip11: typeof fetch = ((url: string) =>
+export const fetchNip11 = (url: string, _init?: unknown, get: typeof httpsGet = httpsGet): Promise<Response> =>
   new Promise<Response>((resolve, reject) => {
-    const req = httpsGet(url, { headers: { Accept: 'application/nostr+json' }, lookup: makeSafeLookup() as never }, (res) => {
+    const req = get(url, { headers: { Accept: 'application/nostr+json' }, lookup: makeSafeLookup() as never }, (res) => {
       const chunks: Buffer[] = [];
       let size = 0;
       res.on('data', (c: Buffer) => {
@@ -123,7 +123,7 @@ const fetchNip11: typeof fetch = ((url: string) =>
     const timer = setTimeout(() => req.destroy(new Error('NIP-11 timeout')), 3000);
     req.on('close', () => clearTimeout(timer));
     req.on('error', reject);
-  })) as unknown as typeof fetch;
+  });
 
 const cache = new Map<string, { at: number; value: boolean }>();
 const TTL_MS = 3_600_000;
@@ -135,7 +135,7 @@ const MAX_CACHED_HOSTS = 500;
  * per hour and URL; any error counts as "no", so an unknown relay just gets
  * the plain search text.
  */
-export async function understandsHints(url: string, fetchFn: typeof fetch = fetchNip11): Promise<boolean> {
+export async function understandsHints(url: string, fetchFn: typeof fetch = fetchNip11 as unknown as typeof fetch): Promise<boolean> {
   // Per host, and only the root document: a caller must not turn this into
   // GET requests to paths of its choosing or grow the cache with query strings.
   const origin = `https://${new URL(url).host}/`;

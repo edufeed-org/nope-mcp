@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { assertPublicRelayUrl, assertResolvesPublic, makeSafeLookup, understandsHints } from '../../src/relay/capabilities.js';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { EventEmitter } from 'node:events';
+import { fetchNip11, assertPublicRelayUrl, assertResolvesPublic, makeSafeLookup, understandsHints } from '../../src/relay/capabilities.js';
 
 describe('assertPublicRelayUrl', () => {
   it('rejects relay URLs that are not public wss', () => {
@@ -88,5 +89,66 @@ describe('understandsHints cache', () => {
     await understandsHints('wss://cache.example.org/?1', f);
     await understandsHints('wss://cache.example.org/any/path?2', f);
     expect(asked).toEqual(['https://cache.example.org/']);
+  });
+});
+
+describe('fetchNip11', () => {
+  afterEach(() => vi.useRealTimers());
+
+  /** A fake node:https get: the request is destroyed like the real one (error, then close). */
+  const fakeGet = () => {
+    const req = Object.assign(new EventEmitter(), {
+      destroy(err: Error) {
+        req.emit('error', err);
+        req.emit('close');
+      },
+    });
+    const res = Object.assign(new EventEmitter(), { statusCode: 200 });
+    const get = ((_url: string, _opts: unknown, cb: (r: typeof res) => void) => {
+      queueMicrotask(() => cb(res));
+      return req;
+    }) as never;
+    return { get, res };
+  };
+
+  it('aborts a response that never ends after 3000 ms', async () => {
+    vi.useFakeTimers();
+    const { get, res } = fakeGet();
+    const outcome = fetchNip11('https://slow.example.org/', undefined, get).then(() => 'resolved', (e: Error) => e.message);
+    await vi.advanceTimersByTimeAsync(2999);
+    res.emit('data', Buffer.from('{')); // trickling bytes do not extend the limit
+    expect(await Promise.race([outcome, Promise.resolve('pending')])).toBe('pending');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await outcome).toBe('NIP-11 timeout');
+  });
+
+  it('rejects when the response closes before its end', async () => {
+    const { get, res } = fakeGet();
+    const pending = fetchNip11('https://short.example.org/', undefined, get);
+    await Promise.resolve();
+    res.emit('data', Buffer.from('{"na'));
+    res.emit('close');
+    await expect(pending).rejects.toThrow('closed early');
+  });
+
+  it('resolves a normal response with body and status', async () => {
+    const { get, res } = fakeGet();
+    const pending = fetchNip11('https://ok.example.org/', undefined, get);
+    await Promise.resolve();
+    res.emit('data', Buffer.from('{"name":'));
+    res.emit('data', Buffer.from('"x"}'));
+    res.emit('end');
+    res.emit('close');
+    const response = await pending;
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ name: 'x' });
+  });
+
+  it('rejects a body over 64 kB', async () => {
+    const { get, res } = fakeGet();
+    const pending = fetchNip11('https://big.example.org/', undefined, get);
+    await Promise.resolve();
+    res.emit('data', Buffer.alloc(65537));
+    await expect(pending).rejects.toThrow('too large');
   });
 });

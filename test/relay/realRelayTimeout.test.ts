@@ -179,4 +179,43 @@ describe('real relay: eoseTimeout/maxWait wiring (regression for the 4400ms nost
     expect(result.map((e) => e.id)).toEqual(events.map((e) => e.id));
     expect(diag.timedOut).toEqual([relay.url]);
   }, 10000);
+  it('queryEvents() stops reading a relay that sends more than 4x the asked limit', async () => {
+    const events = Array.from({ length: 30 }, (_, i) => signedResourceEvent(`flood-${i}`));
+    const relay = await startFakeRelay({ events, neverEose: true });
+    cleanup = relay.close;
+    client = new AMBRelayClient([relay.url], { queryTimeoutMs: 3000 });
+
+    const started = Date.now();
+    const result = await client.queryEvents({ kinds: [30142], limit: 2 }, [relay.url]);
+
+    expect(result).toHaveLength(8);
+    expect(Date.now() - started).toBeLessThan(2000); // settled at the cap, not at the timeout
+  }, 10000);
+
+  it('concurrent queries naming the same extra relay do not cut each other off, and leave no socket open', async () => {
+    const events = [signedResourceEvent('g')];
+    const relay = await startFakeRelay({ events, delayMs: 300 });
+    cleanup = relay.close;
+    client = new AMBRelayClient([], { queryTimeoutMs: 3000 });
+    const ask = () => client!.queryEvents({ kinds: [30142], limit: 10 }, undefined, { extraRelays: [relay.url] });
+
+    const first = ask();
+    await new Promise((r) => setTimeout(r, 150));
+    const second = ask(); // still waiting when the first finishes and closes its relays
+
+    expect((await first).map((e) => e.id)).toEqual([events[0].id]);
+    expect((await second).map((e) => e.id)).toEqual([events[0].id]);
+    await vi.waitFor(() => expect(relay.openSockets()).toBe(0), { timeout: 5000 });
+  }, 10000);
+
+  it('queryEvents() closes the sockets of caller-named relays on the timeout path too', async () => {
+    const relay = await startFakeRelay({ events: [], neverEose: true });
+    cleanup = relay.close;
+    client = new AMBRelayClient([], { queryTimeoutMs: 300 });
+
+    await expect(
+      client.queryEvents({ kinds: [30142], limit: 10 }, undefined, { extraRelays: [relay.url], strict: true })
+    ).rejects.toThrow(/timed out/);
+    await vi.waitFor(() => expect(relay.openSockets()).toBe(0), { timeout: 5000 });
+  }, 10000);
 });
