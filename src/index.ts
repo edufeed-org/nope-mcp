@@ -12,10 +12,13 @@ import {
   PrivateKeySigner,
   ApplesauceRelayPool,
   EncryptionMode,
+  GiftWrapMode,
 } from '@contextvm/sdk';
 
 import { AMBRelayClient } from './relay/client.js';
-import { registerTools } from './tools/index.js';
+import { startRulesRefresh } from './search/rulesStore.js';
+import { registerTools, nostrToolProfile } from './tools/index.js';
+import { limitToolCalls, parseMaxConcurrent } from './tools/concurrency.js';
 import { registerResources } from './resources/index.js';
 import { loadAuthorSets, setAuthorDirectory, setCalendarAuthorDirectory } from './authors.js';
 import { SERVER_NAME, SERVER_VERSION, buildServerInstructions } from './server-info.js';
@@ -72,14 +75,20 @@ async function main() {
     { instructions: buildServerInstructions({ licenseFilterMax: LICENSE_FILTER_MAX }) },
   );
 
+  // Anyone with a key can call this entry, and one search fans out to several relays.
+  limitToolCalls(server, parseMaxConcurrent(process.env));
+
   // Register tools and resources
-  registerTools(server, ambClient, calendarClient, { read: true, extract: true, write: true }, {
+  registerTools(server, ambClient, calendarClient, nostrToolProfile(process.env), {
     spellClient,
     indexer: indexer ?? undefined,
     licenseFilterMax: LICENSE_FILTER_MAX,
     communityClient,
   });
   registerResources(server, ambClient);
+
+  // Search rules shared with the relays (kind-30078 event); unset = built-in rules.
+  startRulesRefresh(process.env.SEARCH_RULES, AMB_RELAYS);
 
   // Load known authors from follow sets if configured
   if (AMB_AUTHOR_SETS.length > 0) {
@@ -120,25 +129,18 @@ async function main() {
       about: 'Query educational resources (AMB metadata) from Nostr relays. Supports full-text search and filtering by subject, resource type, educational level, and more.',
     },
     isPublicServer: false,
+    // The SDK would publish a kind-10002 relay list to public bootstrap relays
+    // by default. This server is found by its configured pubkey, not announced.
+    publishRelayList: false,
     encryptionMode: EncryptionMode.OPTIONAL,
+    // Encrypted traffic as ephemeral gift wraps (kind 21059): a transport relay stores nothing.
+    giftWrapMode: GiftWrapMode.EPHEMERAL,
     injectClientPubkey: true,
   });
 
   // Connect and run
   await server.connect(transport);
   console.log('✓ nope-mcp running');
-  console.log('');
-  console.log('Available tools:');
-  console.log('  - search_resources: Search for educational resources');
-  console.log('  - get_resource: Get a single resource by identifier');
-  console.log('  - browse_subjects: List available subjects');
-  console.log('  - browse_resource_types: List resource types');
-  console.log('  - browse_educational_levels: List educational levels');
-  console.log('  - relay_stats: Get relay information');
-  console.log('  - list_relays: List configured relays');
-  console.log('  - add_relay: Add a relay at runtime');
-  console.log('  - remove_relay: Remove a relay at runtime');
-  console.log('');
   console.log('Press Ctrl+C to stop');
 
   // Handle shutdown

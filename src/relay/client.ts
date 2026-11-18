@@ -1,6 +1,7 @@
 import { SimplePool, type Filter, type NostrEvent } from 'nostr-tools';
 import { normalizeURL } from 'nostr-tools/utils';
 import WebSocket from 'ws';
+import { makeSafeLookup } from './capabilities.js';
 import { namesFor } from './catalog.js';
 import { makeEventCollector } from './provenance.js';
 
@@ -9,6 +10,13 @@ import { makeEventCollector } from './provenance.js';
 // module-local variable that's only seeded from globalThis.WebSocket at load
 // time, and `nostr-tools/relay`'s `useWebSocketImplementation` does NOT reach
 // it. The reliable fix is to pass the impl explicitly per construction.
+/** `ws` socket that resolves its host through the checking lookup: public addresses only. */
+class PublicOnlyWebSocket extends WebSocket {
+  constructor(url: string | URL, protocols?: string | string[]) {
+    super(url, protocols, { lookup: makeSafeLookup() as never });
+  }
+}
+
 const WS_IMPL: typeof globalThis.WebSocket =
   (globalThis as { WebSocket?: typeof globalThis.WebSocket }).WebSocket ??
   (WebSocket as unknown as typeof globalThis.WebSocket);
@@ -349,10 +357,33 @@ export class AMBRelayClient {
   async queryEvents(
     filter: Filter,
     relaySelection?: string[],
-    opts?: { strict?: boolean; diag?: RelayQueryDiagnostics }
+    opts?: {
+      strict?: boolean;
+      diag?: RelayQueryDiagnostics;
+      /** Further relay URLs for this query only (already validated by the caller). */
+      extraRelays?: string[];
+      /** A search string for one relay in place of filter.search (undefined = the filter's own). */
+      searchFor?: (url: string) => string | undefined;
+    }
   ): Promise<NostrEvent[]> {
     const strict = opts?.strict ?? false;
-    const relays = this.resolveRelays(relaySelection);
+    const configured = this.resolveRelays(relaySelection);
+    const relays = [...new Set([...configured, ...(opts?.extraRelays ?? [])])];
+    // A relay named by the caller goes through a pool whose sockets refuse
+    // non-public addresses at connect time (capabilities.ts, makeSafeLookup).
+    // The pool lives for this call only: a shared one would let one query
+    // close the relay another concurrent query is still reading from.
+    let extraPool: SimplePool | undefined;
+    const poolFor = (url: string): SimplePool => {
+      if (configured.includes(url)) return this.pool;
+      extraPool ??= new SimplePool({
+        websocketImplementation: PublicOnlyWebSocket,
+      } as unknown as ConstructorParameters<typeof SimplePool>[0]);
+      return extraPool;
+    };
+    // A relay may send far more than was asked for. Each result may be
+    // followed by one kind-21142 snippet, hence 2 x (2 x limit).
+    const maxEventsPerRelay = 4 * (filter.limit ?? 250);
     if (relays.length === 0) {
       if (strict) throw new RelayUnreachableError(relaySelection ?? [], 'no relays in selection');
       if (opts?.diag) opts.diag.unreachable = relaySelection ?? [];
@@ -394,7 +425,7 @@ export class AMBRelayClient {
       new Promise<NostrEvent[]>(async (resolve, reject) => {
         for (const url of relays) {
           try {
-            await this.pool.ensureRelay(url);
+            await poolFor(url).ensureRelay(url);
             connectedRelays.push(url);
           } catch {
             unreachable.push(url);
@@ -426,7 +457,7 @@ export class AMBRelayClient {
         };
 
         for (const url of connectedRelays) {
-          const relay = await this.pool.ensureRelay(url);
+          const relay = await poolFor(url).ensureRelay(url);
 
           // prepareSubscription creates the sub and registers it, but
           // doesn't send the REQ yet — that happens on fire().
@@ -437,9 +468,18 @@ export class AMBRelayClient {
           // EOSE at that point regardless of our own, much longer, query
           // timeout — silently truncating slow-but-answering relays well
           // before this method's real deadline.
-          const sub = relay.prepareSubscription([filter], {
+          const search = opts?.searchFor?.(url);
+          let received = 0;
+          const sub = relay.prepareSubscription([search === undefined ? filter : { ...filter, search }], {
             eoseTimeout: this.queryTimeoutMs,
-            onevent: (event: NostrEvent) => collector.onevent(event, url),
+            onevent: (event: NostrEvent) => {
+              if (++received > maxEventsPerRelay) {
+                sub.close('too many events');
+                settleRelay(url);
+                return;
+              }
+              collector.onevent(event, url);
+            },
             oneose: () => {
               sub.close('eose');
               settleRelay(url);
@@ -478,7 +518,11 @@ export class AMBRelayClient {
         throw new RelayUnreachableError(relays, 'query timed out before EOSE');
       }
       return events;
-    });
+    })
+      // Relays a caller named are for this query only: drop their sockets on
+      // every path (also a strict-mode throw), or each new hostname would
+      // leave one open until the process restarts.
+      .finally(() => extraPool?.destroy());
     clearTimeout(timeoutHandle); // avoid a dangling timer when the race's other branch won
 
     if (opts?.diag) {

@@ -13,6 +13,7 @@ import {
   setAuthorDirectory,
   setCalendarAuthorDirectory,
 } from './authors.js';
+import { startRulesRefresh } from './search/rulesStore.js';
 import { loadHiddenCalendarSources, setHiddenCalendarSources } from './calendar/hiddenSources.js';
 import { startHttpServer, SessionConfigError } from './transport/http.js';
 import { createJwtVerifier } from './transport/auth.js';
@@ -229,6 +230,9 @@ async function main() {
 
   // Load author sets once at startup; setAuthorDirectory mutates module
   // state shared across all sessions.
+  // Search rules shared with the relays (kind-30078 event); unset = built-in rules.
+  startRulesRefresh(process.env.SEARCH_RULES, AMB_RELAYS);
+
   if (AMB_AUTHOR_SETS.length > 0) {
     console.log(`Loading author sets from ${AMB_AUTHOR_SETS.length} naddr(s)...`);
     try {

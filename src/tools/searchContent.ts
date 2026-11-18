@@ -8,6 +8,9 @@ import { buildContentFilter, type ContentSearchParams } from '../relay/filters.j
 import { transformContentEvent } from '../content/transform.js';
 import { parseSnippets, attachSnippets, SNIPPET_KIND } from '../content/snippet.js';
 import { rankResults } from '../content/rank.js';
+import { getEventRelay } from '../relay/provenance.js';
+import { assertPublicRelayUrl, assertResolvesPublic, understandsHints } from '../relay/capabilities.js';
+import { parseIntent, toSearchString, levelFit, activeRules } from '../search/intent.js';
 import type { SimplifiedContentResult, ResourceResult } from '../content/types.js';
 import { READ_ONLY } from './annotations.js';
 import {
@@ -22,12 +25,13 @@ import { licenseOnlyZeroHint } from './licenseHint.js';
  */
 export const CONTENT_LICENSE_OVERFETCH_FACTOR = 3;
 const RELAY_MAX_LIMIT = 250;
+const MAX_EXTRA_RELAYS = 3;
 
 /**
  * Run a cross-content search: one relay-ranked REQ over the selected content
  * kinds (+ 21142), partition out the snippet events, transform the content
  * events in arrival order, attach each matched passage to its parent, then
- * rank across relays (snippet score + lexical match, see rankResults).
+ * merge across relays (level fit, then per-relay rank, see rankResults).
  * licenseFilter (narrowed to the server's licenseFilterMax ceiling) drops
  * learning resources (30142) outside the requested tier; every other kind
  * passes unfiltered. A metadata-only resource never keeps a snippet/page/
@@ -36,34 +40,68 @@ const RELAY_MAX_LIMIT = 250;
  */
 export async function runContentSearch(
   client: Pick<AMBRelayClient, 'queryEvents'>,
-  params: ContentSearchParams & { language?: string; relays?: string[]; licenseFilter?: LicenseFilter },
-  opts: { licenseFilterMax?: LicenseFilter } = {}
+  params: ContentSearchParams & { language?: string; relays?: string[]; extraRelays?: string[]; licenseFilter?: LicenseFilter },
+  opts: { licenseFilterMax?: LicenseFilter; fetchFn?: typeof fetch; lookupFn?: Parameters<typeof assertResolvesPublic>[1] } = {}
 ): Promise<{
   total: number;
   results: SimplifiedContentResult[];
   relaysIncomplete?: string[];
   warning?: string;
+  /** How the question was read, when level, grade or type words were taken out of the text. */
+  interpretation?: { text: string; levels: string[]; grade?: string; types: string[] };
   licenseFilter: LicenseFilter;
   licenseFilterClamped?: true;
   /** Recovery guidance for the zero-match case caused only by the license filter. */
   hint?: string;
 }> {
   const language = params.language ?? 'de';
-  const filter = buildContentFilter(params);
+  // Level, grade and type words leave the text and go to the relays as
+  // prefer.* hints; the same intent orders the merged list below.
+  // Level, grade and type are statements about learning resources (kind 30142).
+  const reachesResources = !params.types?.length || params.types.includes('resource');
+  const intent = parseIntent(params.query ?? '', activeRules(), reachesResources);
+  const hinted = toSearchString(intent);
+  const interpreted = hinted !== (params.query ?? '');
+  const filter = buildContentFilter(interpreted ? { ...params, query: hinted } : params);
   const limit = filter.limit!;
   const { effective, clamped } = clampLicenseFilter(params.licenseFilter, opts.licenseFilterMax ?? 'any');
   const filterResources = effective !== 'any' && !!filter.kinds?.includes(30142);
   if (filterResources) filter.limit = Math.min(limit * CONTENT_LICENSE_OVERFETCH_FACTOR, RELAY_MAX_LIMIT);
   const diag = newRelayDiagnostics();
-  const events = await client.queryEvents(filter, params.relays, { diag });
+  // "Also use this relay": searched for this call only. A relay that does not
+  // advertise the prefer.* hints gets the cleaned text without them; its hits
+  // are merged like all others, by their own tags.
+  const extraRelays = params.extraRelays ?? [];
+  if (extraRelays.length > MAX_EXTRA_RELAYS) throw new Error(`extraRelays: at most ${MAX_EXTRA_RELAYS} relays per search`);
+  extraRelays.forEach(assertPublicRelayUrl);
+  await Promise.all(extraRelays.map((url) => assertResolvesPublic(url, opts.lookupFn)));
+  const plain = new Set<string>();
+  if (interpreted) {
+    await Promise.all(extraRelays.map(async (url) => (await understandsHints(url, opts.fetchFn)) || plain.add(url)));
+  }
+  const plainSearch = buildContentFilter({ ...params, query: intent.text }).search;
+  const events = await client.queryEvents(filter, params.relays, {
+    diag,
+    ...(extraRelays.length ? { extraRelays, searchFor: (url: string) => (plain.has(url) ? plainSearch : undefined) } : {}),
+  });
 
-  const snippetEvents = events.filter((e) => e.kind === SNIPPET_KIND);
+  // A relay the caller named may only attach a passage to a hit it delivered
+  // itself: otherwise it could put its own text and source URL on a result
+  // that came from a trusted relay.
+  const deliveredBy = new Map(events.filter((e) => e.kind !== SNIPPET_KIND).map((e) => [e.id, getEventRelay(e)]));
+  const snippetEvents = events.filter((e) => {
+    if (e.kind !== SNIPPET_KIND) return false;
+    const relay = getEventRelay(e);
+    if (!relay || !extraRelays.includes(relay)) return true;
+    const parent = e.tags.find((t) => t[0] === 'e')?.[1];
+    return parent !== undefined && deliveredBy.get(parent) === relay;
+  });
 
   // One pass: transform in relay order, skipping invalid events, and keep the
   // surviving source events in lock-step so result[i] ↔ keptEvents[i] for
   // snippet attachment.
   const results: SimplifiedContentResult[] = [];
-  const keptEvents = [];
+  const keptEvents: typeof events = [];
   for (const e of events) {
     if (e.kind === SNIPPET_KIND) continue;
     if (filterResources && e.kind === 30142 && !matchesLicenseFilter(eventLicense(e).group, effective)) continue;
@@ -108,11 +146,15 @@ export async function runContentSearch(
   }
 
   // One ranked list across relays; `limit` applies after the merge.
-  const ranked = rankResults(results, params.query, limit, !filter.search);
+  const fit = new Map(results.map((r, i) => [r, levelFit(keptEvents[i].tags, intent)]));
+  const ranked = rankResults(results, intent.text, limit, !filter.search, (r) => fit.get(r) ?? 0);
 
   return {
     total: ranked.length,
     results: ranked,
+    ...(intent.levels.length || intent.grade || intent.types.length
+      ? { interpretation: { text: intent.text, levels: intent.levels, grade: intent.grade, types: intent.types } }
+      : {}),
     ...relayDiagnosticsFields(diag),
     licenseFilter: effective,
     ...(clamped ? { licenseFilterClamped: true as const } : {}),
@@ -218,6 +260,15 @@ export function registerSearchContentTool(
               "(every resource, including unlicensed and all-rights-reserved). Default: the " +
               "server's ceiling (normally any). Other content types are never license-filtered."
           ),
+        extraRelays: z
+          .array(z.string())
+          .max(3)
+          .optional()
+          .describe(
+            'Up to 3 further relay URLs (wss://, public hostname) to search in addition, for this ' +
+              'call only: use when the user names a relay ("also search wss://…"). Nothing is stored. ' +
+              'Their hits are merged with the others.'
+          ),
         relays: z
           .array(z.string())
           .optional()
@@ -247,6 +298,7 @@ export function registerSearchContentTool(
           limit: params.limit,
           community: params.community,
           relays: relaysSearched,
+          extraRelays: params.extraRelays,
           licenseFilter: params.licenseFilter,
         },
         { licenseFilterMax }

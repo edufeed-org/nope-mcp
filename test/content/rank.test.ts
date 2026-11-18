@@ -114,3 +114,45 @@ describe('rankResults', () => {
     expect(rankResults([...a, ...b], undefined, 4, true).map((i) => i.title)).toEqual(['a4', 'a3', 'a2', 'a1']);
   });
 });
+
+describe('rankResults merges relays by rank and level fit, not by raw scores', () => {
+  const item = (id: string, relay: string, extra: Record<string, unknown> = {}) => ({ id, relay, title: 'Bruchrechnung', ...extra });
+  const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
+
+  it('interleaves relays round-robin whatever their snippet scores say', () => {
+    // A relay's score is 0.7/rank within that relay: rank 1 of a small relay must not beat everything else.
+    const a1 = item('a1', 'A', { score: 0.7 });
+    const a2 = item('a2', 'A', { score: 0.35 });
+    const b1 = item('b1', 'B', { score: 0.2 });
+    const b2 = item('b2', 'B');
+    expect(ids(rankResults([a1, a2, b1, b2], 'Bruchrechnung', 10))).toEqual(['a1', 'b1', 'a2', 'b2']);
+  });
+
+  it('puts better level fit first and keeps the interleave inside equal fit', () => {
+    const a1 = item('a1', 'A');
+    const a2 = item('a2', 'A');
+    const b1 = item('b1', 'B');
+    const b2 = item('b2', 'B');
+    const fit = new Map([[a1, 0], [a2, 2], [b1, 1], [b2, 2]]);
+    expect(ids(rankResults([a1, a2, b1, b2], 'Bruchrechnung', 10, false, (i) => fit.get(i)!))).toEqual(['a2', 'b2', 'b1', 'a1']);
+  });
+
+  it('a relay that returned nothing leaves no gaps', () => {
+    expect(ids(rankResults([item('a1', 'A'), item('a2', 'A')], 'Bruchrechnung', 10))).toEqual(['a1', 'a2']);
+  });
+});
+
+describe('rankResults review findings', () => {
+  const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
+  it('a passage hit without a title match is not buried under description matches', () => {
+    const passage = { id: 'passage', relay: 'A', title: 'Biologie Arbeitsheft 7', score: 0.7 };
+    const others = [0, 1, 2, 3, 4].map((n) => ({ id: 'heft' + n, relay: 'B', title: 'Heft ' + n, description: 'Photosynthese' }));
+    expect(ids(rankResults([passage, ...others], 'Photosynthese', 3))).toContain('passage');
+  });
+  it('applies level fit even when the remaining text has no rank token', () => {
+    const other = { id: 'other', relay: 'A', title: 'KI im Unterricht' };
+    const grade6 = { id: 'grade6', relay: 'A', title: 'KI für Klasse 6' };
+    const fit = new Map([[other, 0], [grade6, 3]]);
+    expect(ids(rankResults([other, grade6], 'ki', 10, false, (i) => fit.get(i)!))).toEqual(['grade6', 'other']);
+  });
+});
