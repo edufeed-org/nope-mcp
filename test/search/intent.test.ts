@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { defaultRules, parseRules, parseIntent, toSearchString, levelFit } from '../../src/search/intent.js';
+import sharedCases from './intent_cases.json' with { type: 'json' };
 
 const K = 'https://w3id.org/kim/';
 const L = {
@@ -82,5 +83,18 @@ describe('parseRules', () => {
     ]) {
       expect(() => parseRules(bad)).toThrow();
     }
+  });
+});
+
+// The TypeScript parser here and the Go parser in nope-relay must read a
+// question the same way. Both run this file of cases (nope-relay keeps the
+// same file in testdata/search_intent_cases.json).
+describe('parseIntent shared cases with nope-relay', () => {
+  it.each(sharedCases.cases)('$query', (c) => {
+    const i = parseIntent(c.query, defaultRules);
+    expect(i.text).toBe(c.text);
+    expect(i.grade ?? null).toBe(c.grade);
+    expect([...i.levels].sort()).toEqual(c.levels);
+    expect(i.types).toEqual(c.types);
   });
 });

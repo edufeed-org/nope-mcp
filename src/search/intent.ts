@@ -121,6 +121,15 @@ function rawTokens(s: string): string[] {
     while (i < s.length && s[i] === ' ') i++;
     if (i >= s.length) break;
     const start = i;
+    // a token that starts with a quote ends at the closing quote, as in the relay
+    if (s[i] === '"') {
+      const end = s.indexOf('"', i + 1);
+      if (end >= 0) {
+        i = end + 1;
+        tokens.push(s.slice(start, i));
+        continue;
+      }
+    }
     while (i < s.length && s[i] !== ' ') {
       if (s[i] === '"') {
         const end = s.indexOf('"', i + 1);

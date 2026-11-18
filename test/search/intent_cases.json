@@ -1,0 +1,236 @@
+{
+ "_comment": "Shared cases for the search-intent parser with the built-in German rules. The same file lives in nope-relay (testdata/search_intent_cases.json) and nope-mcp (test/search/intent_cases.json); both parsers must pass it. Change it in both places.",
+ "cases": [
+  {
+   "query": "Unterrichtsmaterial Bruchrechnung Klasse 6",
+   "text": "Bruchrechnung",
+   "grade": "6",
+   "levels": [
+    "https://w3id.org/kim/educationalLevel/level_2",
+    "https://w3id.org/kim/isced-1997/level2"
+   ],
+   "types": []
+  },
+  {
+   "query": "Unterrichtsmaterial Bruchrechnung",
+   "text": "Bruchrechnung",
+   "grade": null,
+   "levels": [
+    "https://w3id.org/kim/educationalLevel/level_1",
+    "https://w3id.org/kim/educationalLevel/level_2",
+    "https://w3id.org/kim/educationalLevel/level_3",
+    "https://w3id.org/kim/isced-1997/level1",
+    "https://w3id.org/kim/isced-1997/level2",
+    "https://w3id.org/kim/isced-1997/level3"
+   ],
+   "types": []
+  },
+  {
+   "query": "Finde Material zu Fotosynthese, Klasse 7",
+   "text": "Fotosynthese",
+   "grade": "7",
+   "levels": [
+    "https://w3id.org/kim/educationalLevel/level_2",
+    "https://w3id.org/kim/isced-1997/level2"
+   ],
+   "types": []
+  },
+  {
+   "query": "Arbeitsblätter Weimarer Republik Sekundarstufe I",
+   "text": "Weimarer Republik",
+   "grade": null,
+   "levels": [
+    "https://w3id.org/kim/educationalLevel/level_2",
+    "https://w3id.org/kim/isced-1997/level2"
+   ],
+   "types": [
+    "https://w3id.org/kim/hcrt/worksheet"
+   ]
+  },
+  {
+   "query": "Video zum Wasserkreislauf für die Grundschule",
+   "text": "Wasserkreislauf",
+   "grade": null,
+   "levels": [
+    "https://w3id.org/kim/educationalLevel/level_1",
+    "https://w3id.org/kim/isced-1997/level1"
+   ],
+   "types": [
+    "https://w3id.org/kim/hcrt/video"
+   ]
+  },
+  {
+   "query": "Material zu Demokratie für die Oberstufe",
+   "text": "Demokratie",
+   "grade": null,
+   "levels": [
+    "https://w3id.org/kim/educationalLevel/level_3",
+    "https://w3id.org/kim/isced-1997/level3"
+   ],
+   "types": []
+  },
+  {
+   "query": "Fotosynthese für Studierende",
+   "text": "Fotosynthese",
+   "grade": null,
+   "levels": [
+    "https://w3id.org/kim/educationalLevel/level_5",
+    "https://w3id.org/kim/educationalLevel/level_6",
+    "https://w3id.org/kim/educationalLevel/level_7",
+    "https://w3id.org/kim/educationalLevel/level_8",
+    "https://w3id.org/kim/educationalLevel/level_A",
+    "https://w3id.org/kim/isced-1997/level5",
+    "https://w3id.org/kim/isced-1997/level6"
+   ],
+   "types": []
+  },
+  {
+   "query": "Unterrichtsentwürfe für Klasse 12 Mathematik",
+   "text": "Mathematik",
+   "grade": "12",
+   "levels": [
+    "https://w3id.org/kim/educationalLevel/level_3",
+    "https://w3id.org/kim/isced-1997/level3"
+   ],
+   "types": [
+    "https://w3id.org/kim/hcrt/lesson_plan"
+   ]
+  },
+  {
+   "query": "Übungen Sek II Analysis",
+   "text": "Analysis",
+   "grade": null,
+   "levels": [
+    "https://w3id.org/kim/educationalLevel/level_3",
+    "https://w3id.org/kim/isced-1997/level3"
+   ],
+   "types": [
+    "https://w3id.org/kim/hcrt/drill_and_practice"
+   ]
+  },
+  {
+   "query": "Bruchrechnung Klasse 06",
+   "text": "Bruchrechnung",
+   "grade": "6",
+   "levels": [
+    "https://w3id.org/kim/educationalLevel/level_2",
+    "https://w3id.org/kim/isced-1997/level2"
+   ],
+   "types": []
+  },
+  {
+   "query": "Videos und Arbeitsblätter Bruchrechnung",
+   "text": "Bruchrechnung",
+   "grade": null,
+   "levels": [],
+   "types": [
+    "https://w3id.org/kim/hcrt/video",
+    "https://w3id.org/kim/hcrt/worksheet"
+   ]
+  },
+  {
+   "query": "Künstliche Intelligenz im Unterricht",
+   "text": "Künstliche Intelligenz Unterricht",
+   "grade": null,
+   "levels": [],
+   "types": []
+  },
+  {
+   "query": "Methoden für die Hochschullehre",
+   "text": "Methoden Hochschullehre",
+   "grade": null,
+   "levels": [],
+   "types": []
+  },
+  {
+   "query": "Zeige Fotosynthese",
+   "text": "Fotosynthese",
+   "grade": null,
+   "levels": [],
+   "types": []
+  },
+  {
+   "query": "Fotosynthese zeige ich morgen",
+   "text": "Fotosynthese zeige morgen",
+   "grade": null,
+   "levels": [],
+   "types": []
+  },
+  {
+   "query": "Was ist Fotosynthese?",
+   "text": "Fotosynthese",
+   "grade": null,
+   "levels": [],
+   "types": []
+  },
+  {
+   "query": "Fotosynthese",
+   "text": "Fotosynthese",
+   "grade": null,
+   "levels": [],
+   "types": []
+  },
+  {
+   "query": "Videos für die Grundschule",
+   "text": "Videos für die Grundschule",
+   "grade": null,
+   "levels": [],
+   "types": []
+  },
+  {
+   "query": "Klasse 2000",
+   "text": "Klasse 2000",
+   "grade": null,
+   "levels": [],
+   "types": []
+  },
+  {
+   "query": "Klasse statt Masse",
+   "text": "Klasse statt Masse",
+   "grade": null,
+   "levels": [],
+   "types": []
+  },
+  {
+   "query": "klasse +6 brüche",
+   "text": "klasse +6 brüche",
+   "grade": null,
+   "levels": [],
+   "types": []
+  },
+  {
+   "query": "",
+   "text": "",
+   "grade": null,
+   "levels": [],
+   "types": []
+  },
+  {
+   "query": "\"Klasse 6\" Bruchrechnung",
+   "text": "\"Klasse 6\" Bruchrechnung",
+   "grade": null,
+   "levels": [],
+   "types": []
+  },
+  {
+   "query": "\"schriftliche division\"grundschule mathe",
+   "text": "\"schriftliche division\" mathe",
+   "grade": null,
+   "levels": [
+    "https://w3id.org/kim/educationalLevel/level_1",
+    "https://w3id.org/kim/isced-1997/level1"
+   ],
+   "types": []
+  },
+  {
+   "query": "Bruchrechnung Grundschule publisher.name:x",
+   "text": "Bruchrechnung publisher.name:x",
+   "grade": null,
+   "levels": [
+    "https://w3id.org/kim/educationalLevel/level_1",
+    "https://w3id.org/kim/isced-1997/level1"
+   ],
+   "types": []
+  }
+ ]
+}
