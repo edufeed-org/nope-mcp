@@ -338,3 +338,48 @@ describe('runContentSearch cross-relay ranking', () => {
     expect(out.results[0].lexical).toBeUndefined();
   });
 });
+
+describe('runContentSearch interprets the question', () => {
+  const L2 = 'https://w3id.org/kim/isced-1997/level2';
+  const L1 = 'https://w3id.org/kim/isced-1997/level1';
+  function capturing(events: NostrEvent[]) {
+    const seen: Filter[] = [];
+    return { seen, client: { queryEvents: async (f: Filter) => (seen.push(f), events) } };
+  }
+
+  it('sends the cleaned text with prefer hints and reports the interpretation', async () => {
+    const { seen, client } = capturing([]);
+    const out = await runContentSearch(client, { query: 'Bruchrechnung Klasse 6' });
+    expect(seen[0].search).toBe(
+      `Bruchrechnung prefer.level:${L2} prefer.level:https://w3id.org/kim/educationalLevel/level_2 prefer.grade:6`
+    );
+    expect(out.interpretation).toEqual({
+      text: 'Bruchrechnung',
+      levels: [L2, 'https://w3id.org/kim/educationalLevel/level_2'],
+      grade: '6',
+      types: [],
+    });
+  });
+
+  it('leaves a question without such words alone', async () => {
+    const { seen, client } = capturing([]);
+    const out = await runContentSearch(client, { query: 'Fotosynthese' });
+    expect(seen[0].search).toBe('Fotosynthese');
+    expect(out.interpretation).toBeUndefined();
+  });
+
+  it('keeps the community scope behind the hints', async () => {
+    const { seen, client } = capturing([]);
+    await runContentSearch(client, { query: 'Bruchrechnung Grundschule', community: 'a'.repeat(64) });
+    expect(seen[0].search).toMatch(/^Bruchrechnung prefer\.level:.* community:a{64}$/);
+  });
+
+  it('orders by level fit from the events own tags', async () => {
+    const wrong = evt(30142, 'wrong', [['d', '1'], ['name', 'Bruchrechnung A'], ['educationalLevel:id', L1]]);
+    const none = evt(30142, 'none', [['d', '2'], ['name', 'Bruchrechnung B']]);
+    const right = evt(30142, 'right', [['d', '3'], ['name', 'Bruchrechnung C'], ['educationalLevel:id', L2]]);
+    const { client } = capturing([wrong, none, right]);
+    const out = await runContentSearch(client, { query: 'Bruchrechnung Klasse 6' });
+    expect(out.results.map((r) => (r as { title?: string; name?: string }).title ?? (r as { name?: string }).name)).toEqual(['Bruchrechnung C', 'Bruchrechnung B', 'Bruchrechnung A']);
+  });
+});

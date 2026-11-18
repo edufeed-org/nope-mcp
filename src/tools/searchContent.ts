@@ -8,6 +8,7 @@ import { buildContentFilter, type ContentSearchParams } from '../relay/filters.j
 import { transformContentEvent } from '../content/transform.js';
 import { parseSnippets, attachSnippets, SNIPPET_KIND } from '../content/snippet.js';
 import { rankResults } from '../content/rank.js';
+import { parseIntent, toSearchString, levelFit, activeRules } from '../search/intent.js';
 import type { SimplifiedContentResult, ResourceResult } from '../content/types.js';
 import { READ_ONLY } from './annotations.js';
 import {
@@ -27,7 +28,7 @@ const RELAY_MAX_LIMIT = 250;
  * Run a cross-content search: one relay-ranked REQ over the selected content
  * kinds (+ 21142), partition out the snippet events, transform the content
  * events in arrival order, attach each matched passage to its parent, then
- * rank across relays (snippet score + lexical match, see rankResults).
+ * merge across relays (level fit, then per-relay rank, see rankResults).
  * licenseFilter (narrowed to the server's licenseFilterMax ceiling) drops
  * learning resources (30142) outside the requested tier; every other kind
  * passes unfiltered. A metadata-only resource never keeps a snippet/page/
@@ -43,13 +44,20 @@ export async function runContentSearch(
   results: SimplifiedContentResult[];
   relaysIncomplete?: string[];
   warning?: string;
+  /** How the question was read, when level, grade or type words were taken out of the text. */
+  interpretation?: { text: string; levels: string[]; grade?: string; types: string[] };
   licenseFilter: LicenseFilter;
   licenseFilterClamped?: true;
   /** Recovery guidance for the zero-match case caused only by the license filter. */
   hint?: string;
 }> {
   const language = params.language ?? 'de';
-  const filter = buildContentFilter(params);
+  // Level, grade and type words leave the text and go to the relays as
+  // prefer.* hints; the same intent orders the merged list below.
+  const intent = parseIntent(params.query ?? '', activeRules());
+  const hinted = toSearchString(intent);
+  const interpreted = hinted !== (params.query ?? '');
+  const filter = buildContentFilter(interpreted ? { ...params, query: hinted } : params);
   const limit = filter.limit!;
   const { effective, clamped } = clampLicenseFilter(params.licenseFilter, opts.licenseFilterMax ?? 'any');
   const filterResources = effective !== 'any' && !!filter.kinds?.includes(30142);
@@ -108,11 +116,13 @@ export async function runContentSearch(
   }
 
   // One ranked list across relays; `limit` applies after the merge.
-  const ranked = rankResults(results, params.query, limit, !filter.search);
+  const fit = new Map(results.map((r, i) => [r, levelFit(keptEvents[i].tags, intent)]));
+  const ranked = rankResults(results, intent.text, limit, !filter.search, (r) => fit.get(r) ?? 0);
 
   return {
     total: ranked.length,
     results: ranked,
+    ...(interpreted ? { interpretation: { text: intent.text, levels: intent.levels, grade: intent.grade, types: intent.types } } : {}),
     ...relayDiagnosticsFields(diag),
     licenseFilter: effective,
     ...(clamped ? { licenseFilterClamped: true as const } : {}),

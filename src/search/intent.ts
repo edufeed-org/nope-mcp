@@ -96,6 +96,13 @@ export function parseRules(json: unknown): SearchRules {
 
 export const defaultRules: SearchRules = parseRules(rulesJson);
 
+let active: SearchRules = defaultRules;
+/** The rules in use: the built-in ones until a rules event was loaded (rulesStore.ts). */
+export const activeRules = (): SearchRules => active;
+export const setActiveRules = (rules: SearchRules): void => {
+  active = rules;
+};
+
 export interface Intent {
   /** The search text without the words that were interpreted or stripped. */
   text: string;

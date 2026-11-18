@@ -74,12 +74,18 @@ interface Rankable {
 }
 
 /**
- * Adds `lexical`, stable-sorts by `(score ?? 0) + lexical` (zero-match hits
- * last — never dropped: the relay already judged relevance) and slices to
- * `limit`. Ties — and every item when the query has no tokens — go by the
- * item's position within its own relay, so relays interleave round-robin
- * instead of the fastest relay filling the limit; arrival order breaks the
- * rest. `browse` (the relays got no NIP-50 search at all, so each answered
+ * Merges the relays' answers into one list and slices to `limit`: by `fit`
+ * (how well an item fits the level the question named, see search/intent.ts)
+ * when given, then by `lexical` (query words in title, description and
+ * keywords: comparable across relays, zero-match hits last, never dropped),
+ * then by the item's position within its own relay, so relays interleave
+ * round-robin; arrival order breaks the rest.
+ *
+ * A relay's snippet `score` does not order the merged list. It is 0.7/rank
+ * inside that relay, so adding it across relays let rank 1 of a small relay
+ * beat every hit of a large one.
+ *
+ * `browse` (the relays got no NIP-50 search at all, so each answered
  * newest-first) sorts by creation time, newest first, instead.
  * Mutates the items (sets `lexical`); callers pass freshly built results.
  */
@@ -87,7 +93,8 @@ export function rankResults<T extends Rankable>(
   items: T[],
   query: string | undefined,
   limit: number,
-  browse = false
+  browse = false,
+  fit?: (item: T) => number
 ): Array<T & { lexical?: number }> {
   if (browse) {
     const created = (i: T) => i.createdAt ?? i.nostr?.createdAt ?? 0;
@@ -104,7 +111,6 @@ export function rankResults<T extends Rankable>(
   // NIP-50 field filters (type:academic, doi:…) are not words of the topic.
   const tokens = new Set(tokenize(tokenizeSearch(query ?? '').filter((t) => !isFieldFilterToken(t)).join(' ')));
   if (tokens.size === 0) return [...items].sort(byRelayPos).slice(0, limit);
-  const key = (i: T & { lexical: number }) => (i.score ?? 0) + i.lexical;
   return items
     .map((i) =>
       Object.assign(i, {
@@ -115,6 +121,6 @@ export function rankResults<T extends Rankable>(
         }),
       })
     )
-    .sort((a, b) => key(b) - key(a) || byRelayPos(a, b))
+    .sort((a, b) => (fit ? fit(b) - fit(a) : 0) || b.lexical - a.lexical || byRelayPos(a, b))
     .slice(0, limit);
 }
