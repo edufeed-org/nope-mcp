@@ -54,6 +54,16 @@ function closeToolInputs(server: McpServer): void {
 }
 
 /**
+ * Tool profile for the Nostr (ContextVM) entry. Anyone with a key can call a
+ * server on a public transport relay, so CVM_READ_ONLY=true leaves out the
+ * extract tool (it spends the Anthropic key) and the write tools.
+ */
+export function nostrToolProfile(env: { CVM_READ_ONLY?: string }): ToolProfile {
+  const readOnly = env.CVM_READ_ONLY === 'true';
+  return { read: true, extract: !readOnly, write: !readOnly };
+}
+
+/**
  * Register MCP tools with the server, filtered by the given profile.
  *
  * Defaults to the full toolset (read + extract + write) to preserve

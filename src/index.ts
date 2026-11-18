@@ -16,7 +16,7 @@ import {
 
 import { AMBRelayClient } from './relay/client.js';
 import { startRulesRefresh } from './search/rulesStore.js';
-import { registerTools } from './tools/index.js';
+import { registerTools, nostrToolProfile } from './tools/index.js';
 import { registerResources } from './resources/index.js';
 import { loadAuthorSets, setAuthorDirectory, setCalendarAuthorDirectory } from './authors.js';
 import { SERVER_NAME, SERVER_VERSION, buildServerInstructions } from './server-info.js';
@@ -74,7 +74,7 @@ async function main() {
   );
 
   // Register tools and resources
-  registerTools(server, ambClient, calendarClient, { read: true, extract: true, write: true }, {
+  registerTools(server, ambClient, calendarClient, nostrToolProfile(process.env), {
     spellClient,
     indexer: indexer ?? undefined,
     licenseFilterMax: LICENSE_FILTER_MAX,
