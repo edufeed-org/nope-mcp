@@ -1,0 +1,383 @@
+{
+ "version": 1,
+ "stopwords": [
+  "aber",
+  "alle",
+  "allem",
+  "allen",
+  "aller",
+  "alles",
+  "als",
+  "also",
+  "am",
+  "an",
+  "ander",
+  "andere",
+  "anderem",
+  "anderen",
+  "anderer",
+  "anderes",
+  "auch",
+  "auf",
+  "aus",
+  "bei",
+  "bin",
+  "bis",
+  "bist",
+  "da",
+  "damit",
+  "dann",
+  "das",
+  "dass",
+  "dazu",
+  "dein",
+  "deine",
+  "dem",
+  "den",
+  "denn",
+  "der",
+  "derer",
+  "des",
+  "dessen",
+  "dich",
+  "die",
+  "dies",
+  "diese",
+  "diesem",
+  "diesen",
+  "dieser",
+  "dieses",
+  "dir",
+  "doch",
+  "dort",
+  "du",
+  "durch",
+  "ein",
+  "eine",
+  "einem",
+  "einen",
+  "einer",
+  "eines",
+  "einig",
+  "einige",
+  "einigem",
+  "einigen",
+  "einiger",
+  "einiges",
+  "er",
+  "es",
+  "etwas",
+  "euer",
+  "eure",
+  "für",
+  "gegen",
+  "gewesen",
+  "hab",
+  "habe",
+  "haben",
+  "hat",
+  "hatte",
+  "hatten",
+  "hier",
+  "hin",
+  "hinter",
+  "ich",
+  "ihm",
+  "ihn",
+  "ihr",
+  "ihre",
+  "ihrem",
+  "ihren",
+  "ihrer",
+  "ihres",
+  "im",
+  "in",
+  "indem",
+  "ins",
+  "ist",
+  "ja",
+  "jede",
+  "jedem",
+  "jeden",
+  "jeder",
+  "jedes",
+  "jene",
+  "jenem",
+  "jenen",
+  "jener",
+  "jenes",
+  "jetzt",
+  "kann",
+  "kein",
+  "keine",
+  "keinem",
+  "keinen",
+  "keiner",
+  "keines",
+  "können",
+  "könnte",
+  "machen",
+  "man",
+  "manche",
+  "manchem",
+  "manchen",
+  "mancher",
+  "manches",
+  "material",
+  "materialien",
+  "mein",
+  "meine",
+  "mit",
+  "muss",
+  "musste",
+  "nach",
+  "nicht",
+  "nichts",
+  "noch",
+  "nun",
+  "nur",
+  "ob",
+  "oder",
+  "ohne",
+  "sehr",
+  "sein",
+  "seine",
+  "seinem",
+  "seinen",
+  "seiner",
+  "seines",
+  "selbst",
+  "sich",
+  "sie",
+  "sind",
+  "so",
+  "solche",
+  "solchem",
+  "solchen",
+  "solcher",
+  "solches",
+  "soll",
+  "sollte",
+  "sondern",
+  "sonst",
+  "thema",
+  "themen",
+  "um",
+  "und",
+  "uns",
+  "unse",
+  "unsem",
+  "unsen",
+  "unser",
+  "unses",
+  "unter",
+  "viel",
+  "vom",
+  "von",
+  "vor",
+  "war",
+  "waren",
+  "warst",
+  "was",
+  "weg",
+  "weil",
+  "weiter",
+  "welche",
+  "welchem",
+  "welchen",
+  "welcher",
+  "welches",
+  "wenn",
+  "werde",
+  "werden",
+  "wie",
+  "wieder",
+  "will",
+  "wir",
+  "wird",
+  "wirst",
+  "wo",
+  "wollen",
+  "wollte",
+  "während",
+  "würde",
+  "würden",
+  "zu",
+  "zum",
+  "zur",
+  "zwar",
+  "zwischen",
+  "über"
+ ],
+ "commands": [
+  "finde",
+  "zeige"
+ ],
+ "levels": [
+  {
+   "words": [
+    "grundschule",
+    "primarstufe",
+    "primarbereich"
+   ],
+   "concepts": [
+    "https://w3id.org/kim/isced-1997/level1",
+    "https://w3id.org/kim/educationalLevel/level_1"
+   ]
+  },
+  {
+   "words": [
+    "mittelstufe",
+    "unterstufe"
+   ],
+   "concepts": [
+    "https://w3id.org/kim/isced-1997/level2",
+    "https://w3id.org/kim/educationalLevel/level_2"
+   ]
+  },
+  {
+   "words": [
+    "oberstufe"
+   ],
+   "concepts": [
+    "https://w3id.org/kim/isced-1997/level3",
+    "https://w3id.org/kim/educationalLevel/level_3"
+   ]
+  },
+  {
+   "words": [
+    "studierende",
+    "studierenden",
+    "studenten"
+   ],
+   "concepts": [
+    "https://w3id.org/kim/isced-1997/level5",
+    "https://w3id.org/kim/isced-1997/level6",
+    "https://w3id.org/kim/educationalLevel/level_5",
+    "https://w3id.org/kim/educationalLevel/level_6",
+    "https://w3id.org/kim/educationalLevel/level_7",
+    "https://w3id.org/kim/educationalLevel/level_8",
+    "https://w3id.org/kim/educationalLevel/level_A"
+   ]
+  }
+ ],
+ "levelPhrases": [
+  {
+   "first": [
+    "sekundarstufe",
+    "sek"
+   ],
+   "second": [
+    "i",
+    "1"
+   ],
+   "concepts": [
+    "https://w3id.org/kim/isced-1997/level2",
+    "https://w3id.org/kim/educationalLevel/level_2"
+   ]
+  },
+  {
+   "first": [
+    "sekundarstufe",
+    "sek"
+   ],
+   "second": [
+    "ii",
+    "2"
+   ],
+   "concepts": [
+    "https://w3id.org/kim/isced-1997/level3",
+    "https://w3id.org/kim/educationalLevel/level_3"
+   ]
+  }
+ ],
+ "grades": {
+  "words": [
+   "klasse",
+   "klassenstufe",
+   "jahrgangsstufe",
+   "jahrgang"
+  ],
+  "implies": [
+   {
+    "from": 1,
+    "to": 4,
+    "concepts": [
+     "https://w3id.org/kim/isced-1997/level1",
+     "https://w3id.org/kim/educationalLevel/level_1"
+    ]
+   },
+   {
+    "from": 5,
+    "to": 10,
+    "concepts": [
+     "https://w3id.org/kim/isced-1997/level2",
+     "https://w3id.org/kim/educationalLevel/level_2"
+    ]
+   },
+   {
+    "from": 11,
+    "to": 13,
+    "concepts": [
+     "https://w3id.org/kim/isced-1997/level3",
+     "https://w3id.org/kim/educationalLevel/level_3"
+    ]
+   }
+  ]
+ },
+ "types": [
+  {
+   "words": [
+    "video",
+    "videos"
+   ],
+   "concepts": [
+    "https://w3id.org/kim/hcrt/video"
+   ]
+  },
+  {
+   "words": [
+    "arbeitsblatt",
+    "arbeitsblätter"
+   ],
+   "concepts": [
+    "https://w3id.org/kim/hcrt/worksheet"
+   ]
+  },
+  {
+   "words": [
+    "übung",
+    "übungen"
+   ],
+   "concepts": [
+    "https://w3id.org/kim/hcrt/drill_and_practice"
+   ]
+  },
+  {
+   "words": [
+    "unterrichtsentwurf",
+    "unterrichtsentwürfe",
+    "unterrichtsplanung"
+   ],
+   "concepts": [
+    "https://w3id.org/kim/hcrt/lesson_plan"
+   ]
+  }
+ ],
+ "context": [
+  {
+   "words": [
+    "unterrichtsmaterial",
+    "unterrichtsmaterialien"
+   ],
+   "concepts": [
+    "https://w3id.org/kim/isced-1997/level1",
+    "https://w3id.org/kim/educationalLevel/level_1",
+    "https://w3id.org/kim/isced-1997/level2",
+    "https://w3id.org/kim/educationalLevel/level_2",
+    "https://w3id.org/kim/isced-1997/level3",
+    "https://w3id.org/kim/educationalLevel/level_3"
+   ]
+  }
+ ]
+}
