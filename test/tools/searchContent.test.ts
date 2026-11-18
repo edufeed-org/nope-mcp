@@ -383,3 +383,30 @@ describe('runContentSearch interprets the question', () => {
     expect(out.results.map((r) => (r as { title?: string; name?: string }).title ?? (r as { name?: string }).name)).toEqual(['Bruchrechnung C', 'Bruchrechnung B', 'Bruchrechnung A']);
   });
 });
+
+describe('runContentSearch with extra relays', () => {
+  function recording() {
+    const calls: { filter: Filter; opts?: { extraRelays?: string[]; searchFor?: (url: string) => string | undefined } }[] = [];
+    return { calls, client: { queryEvents: async (filter: Filter, _sel?: string[], opts?: any) => (calls.push({ filter, opts }), []) } };
+  }
+  const noHints = (async () => new Response('{}')) as unknown as typeof fetch;
+  const hints = (async () => new Response(JSON.stringify({ nip50: ['ext prefer.level'] }))) as unknown as typeof fetch;
+
+  it('sends plain text to an extra relay without hint support and hints to one with', async () => {
+    const { calls, client } = recording();
+    await runContentSearch(client, { query: 'Bruchrechnung Klasse 6', extraRelays: ['wss://plain.example.org', 'wss://smart.example.org'] },
+      { fetchFn: (async (url: string) => (String(url).includes('smart') ? hints(url) : noHints(url))) as unknown as typeof fetch });
+    const { filter, opts } = calls[0];
+    expect(opts?.extraRelays).toEqual(['wss://plain.example.org', 'wss://smart.example.org']);
+    expect(opts?.searchFor?.('wss://plain.example.org')).toBe('Bruchrechnung');
+    expect(opts?.searchFor?.('wss://smart.example.org')).toBeUndefined(); // gets the filter's own (hinted) search
+    expect(opts?.searchFor?.('wss://amb-relay.edufeed.org')).toBeUndefined(); // configured relays are nope-relays
+    expect(filter.search).toContain('prefer.grade:6');
+  });
+
+  it('rejects more than 3 extra relays and non-public URLs', async () => {
+    const { client } = recording();
+    await expect(runContentSearch(client, { query: 'x', extraRelays: ['wss://a.example.org', 'wss://b.example.org', 'wss://c.example.org', 'wss://d.example.org'] })).rejects.toThrow(/3/);
+    await expect(runContentSearch(client, { query: 'x', extraRelays: ['wss://10.0.0.1'] })).rejects.toThrow();
+  });
+});

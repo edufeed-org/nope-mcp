@@ -8,6 +8,7 @@ import { buildContentFilter, type ContentSearchParams } from '../relay/filters.j
 import { transformContentEvent } from '../content/transform.js';
 import { parseSnippets, attachSnippets, SNIPPET_KIND } from '../content/snippet.js';
 import { rankResults } from '../content/rank.js';
+import { assertPublicRelayUrl, understandsHints } from '../relay/capabilities.js';
 import { parseIntent, toSearchString, levelFit, activeRules } from '../search/intent.js';
 import type { SimplifiedContentResult, ResourceResult } from '../content/types.js';
 import { READ_ONLY } from './annotations.js';
@@ -23,6 +24,7 @@ import { licenseOnlyZeroHint } from './licenseHint.js';
  */
 export const CONTENT_LICENSE_OVERFETCH_FACTOR = 3;
 const RELAY_MAX_LIMIT = 250;
+const MAX_EXTRA_RELAYS = 3;
 
 /**
  * Run a cross-content search: one relay-ranked REQ over the selected content
@@ -37,8 +39,8 @@ const RELAY_MAX_LIMIT = 250;
  */
 export async function runContentSearch(
   client: Pick<AMBRelayClient, 'queryEvents'>,
-  params: ContentSearchParams & { language?: string; relays?: string[]; licenseFilter?: LicenseFilter },
-  opts: { licenseFilterMax?: LicenseFilter } = {}
+  params: ContentSearchParams & { language?: string; relays?: string[]; extraRelays?: string[]; licenseFilter?: LicenseFilter },
+  opts: { licenseFilterMax?: LicenseFilter; fetchFn?: typeof fetch } = {}
 ): Promise<{
   total: number;
   results: SimplifiedContentResult[];
@@ -63,7 +65,21 @@ export async function runContentSearch(
   const filterResources = effective !== 'any' && !!filter.kinds?.includes(30142);
   if (filterResources) filter.limit = Math.min(limit * CONTENT_LICENSE_OVERFETCH_FACTOR, RELAY_MAX_LIMIT);
   const diag = newRelayDiagnostics();
-  const events = await client.queryEvents(filter, params.relays, { diag });
+  // "Also use this relay": searched for this call only. A relay that does not
+  // advertise the prefer.* hints gets the cleaned text without them; its hits
+  // are merged like all others, by their own tags.
+  const extraRelays = params.extraRelays ?? [];
+  if (extraRelays.length > MAX_EXTRA_RELAYS) throw new Error(`extraRelays: at most ${MAX_EXTRA_RELAYS} relays per search`);
+  extraRelays.forEach(assertPublicRelayUrl);
+  const plain = new Set<string>();
+  if (interpreted) {
+    await Promise.all(extraRelays.map(async (url) => (await understandsHints(url, opts.fetchFn)) || plain.add(url)));
+  }
+  const plainSearch = buildContentFilter({ ...params, query: intent.text }).search;
+  const events = await client.queryEvents(filter, params.relays, {
+    diag,
+    ...(extraRelays.length ? { extraRelays, searchFor: (url: string) => (plain.has(url) ? plainSearch : undefined) } : {}),
+  });
 
   const snippetEvents = events.filter((e) => e.kind === SNIPPET_KIND);
 
@@ -71,7 +87,7 @@ export async function runContentSearch(
   // surviving source events in lock-step so result[i] ↔ keptEvents[i] for
   // snippet attachment.
   const results: SimplifiedContentResult[] = [];
-  const keptEvents = [];
+  const keptEvents: typeof events = [];
   for (const e of events) {
     if (e.kind === SNIPPET_KIND) continue;
     if (filterResources && e.kind === 30142 && !matchesLicenseFilter(eventLicense(e).group, effective)) continue;
@@ -228,6 +244,15 @@ export function registerSearchContentTool(
               "(every resource, including unlicensed and all-rights-reserved). Default: the " +
               "server's ceiling (normally any). Other content types are never license-filtered."
           ),
+        extraRelays: z
+          .array(z.string())
+          .max(3)
+          .optional()
+          .describe(
+            'Up to 3 further relay URLs (wss://, public hostname) to search in addition, for this ' +
+              'call only: use when the user names a relay ("also search wss://…"). Nothing is stored. ' +
+              'Their hits are merged with the others.'
+          ),
         relays: z
           .array(z.string())
           .optional()
@@ -257,6 +282,7 @@ export function registerSearchContentTool(
           limit: params.limit,
           community: params.community,
           relays: relaysSearched,
+          extraRelays: params.extraRelays,
           licenseFilter: params.licenseFilter,
         },
         { licenseFilterMax }

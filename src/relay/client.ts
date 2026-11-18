@@ -349,10 +349,17 @@ export class AMBRelayClient {
   async queryEvents(
     filter: Filter,
     relaySelection?: string[],
-    opts?: { strict?: boolean; diag?: RelayQueryDiagnostics }
+    opts?: {
+      strict?: boolean;
+      diag?: RelayQueryDiagnostics;
+      /** Further relay URLs for this query only (already validated by the caller). */
+      extraRelays?: string[];
+      /** A search string for one relay in place of filter.search (undefined = the filter's own). */
+      searchFor?: (url: string) => string | undefined;
+    }
   ): Promise<NostrEvent[]> {
     const strict = opts?.strict ?? false;
-    const relays = this.resolveRelays(relaySelection);
+    const relays = [...new Set([...this.resolveRelays(relaySelection), ...(opts?.extraRelays ?? [])])];
     if (relays.length === 0) {
       if (strict) throw new RelayUnreachableError(relaySelection ?? [], 'no relays in selection');
       if (opts?.diag) opts.diag.unreachable = relaySelection ?? [];
@@ -437,7 +444,8 @@ export class AMBRelayClient {
           // EOSE at that point regardless of our own, much longer, query
           // timeout — silently truncating slow-but-answering relays well
           // before this method's real deadline.
-          const sub = relay.prepareSubscription([filter], {
+          const search = opts?.searchFor?.(url);
+          const sub = relay.prepareSubscription([search === undefined ? filter : { ...filter, search }], {
             eoseTimeout: this.queryTimeoutMs,
             onevent: (event: NostrEvent) => collector.onevent(event, url),
             oneose: () => {
