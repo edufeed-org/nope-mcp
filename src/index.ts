@@ -6,6 +6,7 @@
  * resources from a Nostr relay.
  */
 
+import { secretKeyHex } from './utils/secretKey.js';
 import { McpServer } from '@modelcontextprotocol/server';
 import {
   NostrServerTransport,
@@ -115,7 +116,7 @@ async function main() {
   }
 
   // Set up ContextVM transport
-  const signer = new PrivateKeySigner(SERVER_PRIVATE_KEY);
+  const signer = new PrivateKeySigner(secretKeyHex(SERVER_PRIVATE_KEY));
   const relayPool = new ApplesauceRelayPool(RELAYS);
   const serverPubkey = await signer.getPublicKey();
 
