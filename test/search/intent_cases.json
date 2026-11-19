@@ -231,6 +231,21 @@
     "https://w3id.org/kim/isced-1997/level1"
    ],
    "types": []
+  },
+  {
+   "query": "Wie kann ich die Studierenden in meinem Seminar besser aktivieren?",
+   "text": "Seminar besser aktivieren",
+   "grade": null,
+   "levels": [
+    "https://w3id.org/kim/educationalLevel/level_5",
+    "https://w3id.org/kim/educationalLevel/level_6",
+    "https://w3id.org/kim/educationalLevel/level_7",
+    "https://w3id.org/kim/educationalLevel/level_8",
+    "https://w3id.org/kim/educationalLevel/level_A",
+    "https://w3id.org/kim/isced-1997/level5",
+    "https://w3id.org/kim/isced-1997/level6"
+   ],
+   "types": []
   }
  ]
 }
