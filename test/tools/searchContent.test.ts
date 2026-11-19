@@ -351,7 +351,7 @@ describe('runContentSearch interprets the question', () => {
     const { seen, client } = capturing([]);
     const out = await runContentSearch(client, { query: 'Bruchrechnung Klasse 6' });
     expect(seen[0].search).toBe(
-      `Bruchrechnung prefer.level:${L2} prefer.level:https://w3id.org/kim/educationalLevel/level_2 prefer.grade:6`
+      `Bruchrechnung prefer.level:${L2} prefer.level:https://w3id.org/kim/educationalLevel/level_2 prefer.grade:6 semantic:"Bruchrechnung Klasse 6"`
     );
     expect(out.interpretation).toEqual({
       text: 'Bruchrechnung',
@@ -442,10 +442,10 @@ describe('review findings on the coordinator', () => {
     const seen: Filter[] = [];
     const client = { queryEvents: async (f: Filter) => (seen.push(f), []) };
     const a = await runContentSearch(client, { query: 'Video für die Didaktik', types: ['publication'] });
-    expect(seen[0].search).toBe('Video Didaktik'); // stopwords go, the type word stays text
+    expect(seen[0].search).toBe('Video Didaktik semantic:"Video für die Didaktik"'); // stopwords go, the type word stays text
     expect(a.interpretation).toBeUndefined();
     await runContentSearch(client, { query: 'Video für die Didaktik', types: ['resource', 'article'] });
-    expect(seen[1].search).toBe('Didaktik prefer.type:https://w3id.org/kim/hcrt/video');
+    expect(seen[1].search).toBe('Didaktik prefer.type:https://w3id.org/kim/hcrt/video semantic:"Video für die Didaktik"');
   });
 
   it('reports an interpretation only when something was interpreted', async () => {

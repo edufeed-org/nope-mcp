@@ -10,7 +10,7 @@ import { parseSnippets, attachSnippets, SNIPPET_KIND } from '../content/snippet.
 import { rankResults } from '../content/rank.js';
 import { getEventRelay } from '../relay/provenance.js';
 import { assertPublicRelayUrl, assertResolvesPublic, understandsHints } from '../relay/capabilities.js';
-import { parseIntent, toSearchString, levelFit, activeRules } from '../search/intent.js';
+import { parseIntent, toSearchString, semanticDirective, levelFit, activeRules } from '../search/intent.js';
 import type { SimplifiedContentResult, ResourceResult } from '../content/types.js';
 import { READ_ONLY } from './annotations.js';
 import {
@@ -60,7 +60,7 @@ export async function runContentSearch(
   // Level, grade and type are statements about learning resources (kind 30142).
   const reachesResources = !params.types?.length || params.types.includes('resource');
   const intent = parseIntent(params.query ?? '', activeRules(), reachesResources);
-  const hinted = toSearchString(intent);
+  const hinted = toSearchString(intent) + semanticDirective(params.query ?? '', intent);
   const interpreted = hinted !== (params.query ?? '');
   const filter = buildContentFilter(interpreted ? { ...params, query: hinted } : params);
   const limit = filter.limit!;
