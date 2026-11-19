@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runContentSearch } from '../../src/tools/searchContent.js';
+import { runContentSearch, compactResults } from '../../src/tools/searchContent.js';
 import type { NostrEvent, Filter } from 'nostr-tools';
 import type { ResourceResult, ArticleResult } from '../../src/content/types.js';
 import { nip19 } from 'nostr-tools';
@@ -452,5 +452,12 @@ describe('review findings on the coordinator', () => {
     const client = { queryEvents: async () => [] };
     expect((await runContentSearch(client, { query: 'der Dreisatz' })).interpretation).toBeUndefined();
     expect((await runContentSearch(client, { query: 'Dreisatz Klasse 7' })).interpretation?.grade).toBe('7');
+  });
+});
+
+describe('compactResults', () => {
+  it('keeps only what a client needs to order results it already holds', () => {
+    const full = [{ type: 'resource', kind: 30142, title: 'T', naddr: 'naddr1x', relay: 'wss://r', description: 'long '.repeat(500), lexical: 0.5 }];
+    expect(compactResults(full as never)).toEqual([{ naddr: 'naddr1x', title: 'T', relay: 'wss://r' }]);
   });
 });

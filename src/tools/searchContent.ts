@@ -162,6 +162,18 @@ export async function runContentSearch(
   };
 }
 
+/**
+ * Address, title and relay per result: for a client that holds the events
+ * already and only needs their order. A full 50-result answer is about
+ * 110 kB, more than a Nostr transport relay takes once it is gift-wrapped.
+ */
+export function compactResults(results: SimplifiedContentResult[]): { naddr?: string; title?: string; relay?: string }[] {
+  return results.map((r) => {
+    const { naddr, title, relay } = r as { naddr?: string; title?: string; relay?: string };
+    return { naddr, title, relay };
+  });
+}
+
 export function registerSearchContentTool(
   server: McpServer,
   client: AMBRelayClient,
@@ -269,6 +281,13 @@ export function registerSearchContentTool(
               'call only: use when the user names a relay ("also search wss://…"). Nothing is stored. ' +
               'Their hits are merged with the others.'
           ),
+        compact: z
+          .boolean()
+          .optional()
+          .describe(
+            'Return only naddr, title and relay per result. For clients that hold the events already ' +
+              'and need the order alone; keeps a long list small enough for the Nostr transport.'
+          ),
         relays: z
           .array(z.string())
           .optional()
@@ -312,6 +331,7 @@ export function registerSearchContentTool(
               relaysSearched,
               ...(notSearched.length > 0 ? { relaysNotSearched: notSearched } : {}),
               ...out,
+              ...(params.compact ? { results: compactResults(out.results) } : {}),
             }),
           },
         ],

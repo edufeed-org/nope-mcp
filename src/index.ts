@@ -7,6 +7,7 @@
  */
 
 import { secretKeyHex } from './utils/secretKey.js';
+import { withPublishDeadline } from './transport/publishDeadline.js';
 import { McpServer } from '@modelcontextprotocol/server';
 import {
   NostrServerTransport,
@@ -117,7 +118,7 @@ async function main() {
 
   // Set up ContextVM transport
   const signer = new PrivateKeySigner(secretKeyHex(SERVER_PRIVATE_KEY));
-  const relayPool = new ApplesauceRelayPool(RELAYS);
+  const relayPool = new (withPublishDeadline(ApplesauceRelayPool, 15_000))(RELAYS);
   const serverPubkey = await signer.getPublicKey();
 
   console.log(`Server Public Key: ${serverPubkey}`);
