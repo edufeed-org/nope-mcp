@@ -224,6 +224,18 @@ export function toSearchString(intent: Intent): string {
   ].join(' ');
 }
 
+/**
+ * The free text of the question as asked, as nope-relay's `semantic:"…"`
+ * directive: the text the relay embeds for the vector side, which reads a
+ * whole question better than the cleaned keyword text. Empty when the free
+ * text did not change or the caller set the directive.
+ */
+export function semanticDirective(query: string, intent: Intent): string {
+  const free = (s: string) => rawTokens(s).filter(freeText).join(' ');
+  const asked = free(query).replaceAll('"', '');
+  return asked === '' || asked === free(intent.text) || query.includes('semantic:') ? '' : ` semantic:"${asked}"`;
+}
+
 /** A trailing slash and http/https do not make a different concept. */
 const conceptKey = (id: string) => id.replace(/\/+$/, '').replace(/^https?:\/\//, '');
 

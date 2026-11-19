@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { defaultRules, parseRules, parseIntent, toSearchString, levelFit } from '../../src/search/intent.js';
+import { defaultRules, parseRules, parseIntent, toSearchString, semanticDirective, levelFit } from '../../src/search/intent.js';
 import sharedCases from './intent_cases.json' with { type: 'json' };
 
 const K = 'https://w3id.org/kim/';
@@ -54,6 +54,23 @@ describe('toSearchString', () => {
     expect(toSearchString(parseIntent('"Klasse 6" type:academic Fotosynthese', defaultRules))).toBe(
       '"Klasse 6" type:academic Fotosynthese'
     );
+  });
+});
+
+describe('semanticDirective', () => {
+  const dir = (q: string) => semanticDirective(q, parseIntent(q, defaultRules));
+  it('carries the free text as asked when words were taken out', () => {
+    expect(dir('Wie kann ich die Studierenden in meinem Seminar besser aktivieren?')).toBe(
+      ' semantic:"Wie kann ich die Studierenden in meinem Seminar besser aktivieren?"'
+    );
+  });
+  it('leaves field tokens and phrases out', () => {
+    expect(dir('Video zu Fotosynthese "Klasse 6" type:academic')).toBe(' semantic:"Video zu Fotosynthese"');
+  });
+  it('is empty when the free text did not change or the caller set it', () => {
+    expect(dir('Fotosynthese type:academic')).toBe('');
+    expect(dir('Video zu Fotosynthese semantic:"x"')).toBe('');
+    expect(dir('Fotosynthese prefer.grade:6')).toBe('');
   });
 });
 
