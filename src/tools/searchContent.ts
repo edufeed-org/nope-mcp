@@ -40,7 +40,7 @@ const MAX_EXTRA_RELAYS = 3;
  */
 export async function runContentSearch(
   client: Pick<AMBRelayClient, 'queryEvents'>,
-  params: ContentSearchParams & { language?: string; relays?: string[]; extraRelays?: string[]; licenseFilter?: LicenseFilter },
+  params: ContentSearchParams & { language?: string; relays?: string[]; extraRelays?: string[]; licenseFilter?: LicenseFilter; lessFitting?: boolean },
   opts: { licenseFilterMax?: LicenseFilter; fetchFn?: typeof fetch; lookupFn?: Parameters<typeof assertResolvesPublic>[1] } = {}
 ): Promise<{
   total: number;
@@ -64,19 +64,25 @@ export async function runContentSearch(
   const interpreted = hinted !== (params.query ?? '');
   const filter = buildContentFilter(interpreted ? { ...params, query: hinted } : params);
   const limit = filter.limit!;
+  // The relays judge which learning resources fit the question (nope-relay
+  // `fit:`): ask for the fitting ones, or for the rest when the caller wants
+  // to see what was held back. Showing nothing beats showing off-topic hits.
+  const judged = reachesResources && !!params.query?.trim();
+  if (judged) filter.search += params.lessFitting ? ' fit:rest' : ' fit:only';
   const { effective, clamped } = clampLicenseFilter(params.licenseFilter, opts.licenseFilterMax ?? 'any');
   const filterResources = effective !== 'any' && !!filter.kinds?.includes(30142);
   if (filterResources) filter.limit = Math.min(limit * CONTENT_LICENSE_OVERFETCH_FACTOR, RELAY_MAX_LIMIT);
   const diag = newRelayDiagnostics();
   // "Also use this relay": searched for this call only. A relay that does not
-  // advertise the prefer.* hints gets the cleaned text without them; its hits
+  // advertise the prefer.* hints gets the cleaned text without them and
+  // without `fit:` (it would read the token as a search word); its hits
   // are merged like all others, by their own tags.
   const extraRelays = params.extraRelays ?? [];
   if (extraRelays.length > MAX_EXTRA_RELAYS) throw new Error(`extraRelays: at most ${MAX_EXTRA_RELAYS} relays per search`);
   extraRelays.forEach(assertPublicRelayUrl);
   await Promise.all(extraRelays.map((url) => assertResolvesPublic(url, opts.lookupFn)));
   const plain = new Set<string>();
-  if (interpreted) {
+  if (interpreted || judged) {
     await Promise.all(extraRelays.map(async (url) => (await understandsHints(url, opts.fetchFn)) || plain.add(url)));
   }
   const plainSearch = buildContentFilter({ ...params, query: intent.text }).search;
@@ -281,6 +287,14 @@ export function registerSearchContentTool(
               'call only: use when the user names a relay ("also search wss://…"). Nothing is stored. ' +
               'Their hits are merged with the others.'
           ),
+        lessFitting: z
+          .boolean()
+          .optional()
+          .describe(
+            'By default only learning resources that fit the question are returned (topic and, if named, ' +
+              'educational level), so a result can be empty. Set true to get the hits that were held back ' +
+              'instead: loosely related material, to offer as "less fitting" when the user asks for more.'
+          ),
         compact: z
           .boolean()
           .optional()
@@ -319,6 +333,7 @@ export function registerSearchContentTool(
           relays: relaysSearched,
           extraRelays: params.extraRelays,
           licenseFilter: params.licenseFilter,
+          lessFitting: params.lessFitting,
         },
         { licenseFilterMax }
       );
