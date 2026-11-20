@@ -132,7 +132,7 @@ describe('runContentSearch with licenseFilter', () => {
     const out = await runContentSearch(client, { query: 'klima', limit: 20, licenseFilter: 'open' });
 
     expect(client.filters[0].limit).toBe(60);
-    expect(client.filters[0].search).toBe('klima');
+    expect(client.filters[0].search).toBe('klima fit:only'); // a directive, no field filter
     expect(out.results.map((r) => (r as { type: string }).type)).toEqual(['article', 'resource']);
     expect(out.results[0].snippet).toBe('passage A');
     expect(out.results[1].snippet).toBe('passage BY');
@@ -351,7 +351,7 @@ describe('runContentSearch interprets the question', () => {
     const { seen, client } = capturing([]);
     const out = await runContentSearch(client, { query: 'Bruchrechnung Klasse 6' });
     expect(seen[0].search).toBe(
-      `Bruchrechnung prefer.level:${L2} prefer.level:https://w3id.org/kim/educationalLevel/level_2 prefer.grade:6 semantic:"Bruchrechnung Klasse 6"`
+      `Bruchrechnung prefer.level:${L2} prefer.level:https://w3id.org/kim/educationalLevel/level_2 prefer.grade:6 semantic:"Bruchrechnung Klasse 6" fit:only`
     );
     expect(out.interpretation).toEqual({
       text: 'Bruchrechnung',
@@ -364,14 +364,14 @@ describe('runContentSearch interprets the question', () => {
   it('leaves a question without such words alone', async () => {
     const { seen, client } = capturing([]);
     const out = await runContentSearch(client, { query: 'Fotosynthese' });
-    expect(seen[0].search).toBe('Fotosynthese');
+    expect(seen[0].search).toBe('Fotosynthese fit:only');
     expect(out.interpretation).toBeUndefined();
   });
 
   it('keeps the community scope behind the hints', async () => {
     const { seen, client } = capturing([]);
     await runContentSearch(client, { query: 'Bruchrechnung Grundschule', community: 'a'.repeat(64) });
-    expect(seen[0].search).toMatch(/^Bruchrechnung prefer\.level:.* community:a{64}$/);
+    expect(seen[0].search).toMatch(/^Bruchrechnung prefer\.level:.* community:a{64} fit:only$/);
   });
 
   it('orders by level fit from the events own tags', async () => {
@@ -438,6 +438,30 @@ describe('review findings on the coordinator', () => {
     expect((out.results[0] as ArticleResult).snippet).toBe('eine Passage');
   });
 
+  it('asks the relays for fitting hits only, or for the rest on request', async () => {
+    const seen: Filter[] = [];
+    const client = { queryEvents: async (f: Filter) => (seen.push(f), []) };
+    await runContentSearch(client, { query: 'Fotosynthese' });
+    expect(seen[0].search).toBe('Fotosynthese fit:only');
+    await runContentSearch(client, { query: 'Fotosynthese', lessFitting: true });
+    expect(seen[1].search).toBe('Fotosynthese fit:rest');
+    // only learning resources are judged: no directive when none are searched, or without a text
+    await runContentSearch(client, { query: 'Fotosynthese', types: ['article'] });
+    expect(seen[2].search).toBe('Fotosynthese');
+    await runContentSearch(client, { community: 'a'.repeat(64) });
+    expect(seen[3].search).toBe(`community:${'a'.repeat(64)}`);
+  });
+
+  it('keeps the fit directive away from a relay that does not advertise the nope extensions', async () => {
+    const calls: { filter: Filter; opts?: { searchFor?: (url: string) => string | undefined } }[] = [];
+    const client = { queryEvents: async (filter: Filter, _r?: string[], opts?: { searchFor?: (url: string) => string | undefined }) => (calls.push({ filter, opts }), []) };
+    const noNip11 = (async () => new Response('{}', { status: 200 })) as unknown as typeof fetch;
+    await runContentSearch(client, { query: 'Fotosynthese', extraRelays: ['wss://plain.example.org'] },
+      { lookupFn: async () => [{ address: '93.184.216.34', family: 4 }], fetchFn: noNip11 });
+    expect(calls[0].filter.search).toBe('Fotosynthese fit:only');
+    expect(calls[0].opts?.searchFor?.('wss://plain.example.org')).toBe('Fotosynthese');
+  });
+
   it('interprets level and type words only when learning resources are searched', async () => {
     const seen: Filter[] = [];
     const client = { queryEvents: async (f: Filter) => (seen.push(f), []) };
@@ -445,7 +469,7 @@ describe('review findings on the coordinator', () => {
     expect(seen[0].search).toBe('Video Didaktik semantic:"Video für die Didaktik"'); // stopwords go, the type word stays text
     expect(a.interpretation).toBeUndefined();
     await runContentSearch(client, { query: 'Video für die Didaktik', types: ['resource', 'article'] });
-    expect(seen[1].search).toBe('Didaktik prefer.type:https://w3id.org/kim/hcrt/video semantic:"Video für die Didaktik"');
+    expect(seen[1].search).toBe('Didaktik prefer.type:https://w3id.org/kim/hcrt/video semantic:"Video für die Didaktik" fit:only');
   });
 
   it('reports an interpretation only when something was interpreted', async () => {
