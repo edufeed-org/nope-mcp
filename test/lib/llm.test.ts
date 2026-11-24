@@ -118,6 +118,19 @@ describe('llmEnrich', () => {
     expect(systemText).toMatch(/ekw/i);
   });
 
+  it('tells the model to leave license empty when the source names none', async () => {
+    // EKKW test run: an article whose license is printed only in the magazine
+    // came back as CC BY 4.0; the editors want the field left empty instead.
+    const { client, calls } = stubClient({ payload: {}, evidence: {} });
+    await llmEnrich({ client, variant: 'ekw', page: { ogTags: {}, readableText: 'x' }, vocabs: {} });
+    const params = calls[0] as { system: string | Array<{ text?: string }> };
+    const systemText = typeof params.system === 'string'
+      ? params.system
+      : params.system.map((s) => s.text ?? '').join(' ');
+    expect(systemText).toMatch(/no license.*leave `license` empty/i);
+    expect(systemText).not.toMatch(/Do not leave them\s+empty/);
+  });
+
   it('declares the AMB + EKW form fields as explicit payload properties', async () => {
     // Without per-field properties Anthropic models sometimes serialize the
     // entire `payload` arg as a JSON-encoded string, and those strings can

@@ -284,9 +284,13 @@ function systemPrompt(variant: Variant): string {
     '  Read the suffix carefully — "BY-NC-SA" is NOT "BY-SA", and "BY-NC" is NOT',
     '  "BY". Reproduce every modifier present in the source text. PDFs often',
     '  state the license on the cover page, in the imprint/Impressum, or',
-    '  alongside copyright notices). For PDFs without OpenGraph tags, you must',
-    '  still synthesize these fields from the readable text. Do not leave them',
-    '  empty just because no OG metadata is present.'
+    '  alongside copyright notices).',
+    '  RULE 3: if the source states no license at all, leave `license` empty —',
+    '  never guess one (a magazine article may carry its license only in the',
+    '  printed issue; an empty field is correct then).',
+    'For PDFs without OpenGraph tags, still synthesize `name`, `description` and',
+    '`creators` from the readable text rather than leaving them empty just',
+    'because no OG metadata is present.'
   ];
   const parts =
     variant === 'konfi'
